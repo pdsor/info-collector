@@ -1,0 +1,77 @@
+name: "巨潮资讯 - 数据要素相关公告"
+version: "1.0.0"
+description: "从巨潮资讯网搜索数据要素相关上市公司公告，适合追踪数据资产入表、数据产品登记等线索"
+
+source:
+  platform: "cninfo"
+  type: "api"  # 直接调用 API，无需渲染
+  base_url: "https://www.cninfo.com.cn/new/fulltextSearch/full"
+  auth:
+    type: "none"
+
+request:
+  method: "POST"
+  headers:
+    User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    Content-Type: "application/x-www-form-urlencoded"
+  body_template: |
+    searchkey={keyword}&sdate=&edate=&isfulltext=false&sortName=pubdate&sortType=desc&plateCode=
+  params:
+    keyword: "数据要素"
+
+list:
+  # API 返回 JSON 中 announcements 数组是列表
+  items_path: "$.announcements[*]"
+  fields:
+    - name: "title"
+      type: "field"
+      path: "$.announcementTitle"
+      # 原始内容含 <em> 标签，需要去除
+      transform: "strip_html"
+    - name: "url"
+      type: "computed"
+      value: "https://www.cninfo.com.cn/new/disclosure/detail?announcementId={announcementId}&orgId={orgId}"
+      vars:
+        announcementId: "$.announcementId"
+        orgId: "$.orgId"
+    - name: "platform"
+      type: "constant"
+      value: "巨潮资讯"
+    - name: "publish_time"
+      type: "field"
+      path: "$.announcementTime"
+      # 时间戳（毫秒），转为 ISO 格式
+      transform: "timestamp_ms_to_iso"
+    - name: "company"
+      type: "field"
+      path: "$.secName"
+    - name: "clue_type"
+      type: "computed"
+      value: "policy"  # 默认政策类，具体需人工判断或二次分析
+      # 后续可扩展：根据 title 关键词自动分类
+    - name: "raw_id"
+      type: "field"
+      path: "$.announcementId"
+    - name: "org_id"
+      type: "field"
+      path: "$.orgId"
+
+dedup:
+  incremental: true
+  id_template: "cninfo_{raw_id}"
+  # 全局去重表 id 格式
+
+pagination:
+  enabled: true
+  page_param: "pageNum"  # POST body 中翻页参数
+  max_pages: 10
+  # 增量场景下只需取第一页新数据即可
+
+output:
+  format: "json"
+  path: "./output/cninfo/"
+  filename_template: "cninfo_data_value_{date}.json"
+
+alert:
+  on_failure: true
+  retry_times: 3
