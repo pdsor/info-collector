@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据采集看板 - InfoCollector</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --border: #2d3748;
+    --text: #e2e8f0;
+    --text-muted: #718096;
+    --accent: #3182ce;
+    --accent-hover: #2c5282;
+    --green: #48bb78;
+    --red: #fc8181;
+    --yellow: #f6ad55;
+    --orange: #ed8936;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  header h1 { font-size: 17px; font-weight: 600; color: #fff; }
+  .badge {
+    background: var(--accent);
+    color: #fff;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+  }
+  .header-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .last-updated { font-size: 12px; color: var(--text-muted); }
+
+  /* ── Stats Row ── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .stat-cell {
+    background: var(--surface);
+    padding: 14px 20px;
+    text-align: center;
+  }
+  .stat-cell .label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+  }
+  .stat-cell .value {
+    font-size: 24px;
+    font-weight: 700;
+    color: #fff;
+  }
+  .stat-cell .sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+  .stat-ok { color: var(--green); }
+  .stat-err { color: var(--red); }
+
+  /* ── Tab Bar ── */
+  .tab-bar {
+    display: flex;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+  }
+  .tab-btn {
+    padding: 10px 18px;
+    font-size: 13px;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+    border: none;
+    background: none;
+    font-family: inherit;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* ── Main Layout ── */
+  .main { display: flex; min-height: calc(100vh - 120px); }
+
+  /* ── Left Panel: Rules List ── */
+  .panel-left {
+    width: 280px;
+    min-width: 280px;
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    background: var(--surface);
+  }
+  .panel-header {
+    padding: 12px 16px;
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .panel-header button {
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: 11px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .rule-item {
+    padding: 10px 16px;
+    border-bottom: 1px solid #1e2330;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .rule-item:hover { background: #1e2330; }
+  .rule-item.selected { background: #1e2a3a; border-left: 2px solid var(--accent); }
+  .rule-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .rule-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+  .dot-success { background: var(--green); }
+  .dot-failed  { background: var(--red); }
+  .dot-pending { background: var(--text-muted); }
+  .dot-running { background: var(--yellow); animation: pulse 1s infinite; }
+  .dot-disabled { background: #4a5568; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* ── Right Panel: Detail ── */
+  .panel-right { flex: 1; overflow-y: auto; padding: 0; }
+
+  /* ── Rule Detail ── */
+  .rule-detail { padding: 20px 24px; }
+  .detail-header { margin-bottom: 20px; }
+  .detail-title { font-size: 18px; font-weight: 600; color: #fff; margin-bottom: 6px; }
+  .detail-desc { font-size: 13px; color: var(--text-muted); margin-bottom: 12px; }
+  .detail-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tag {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .tag-platform { background: #2c5282; color: #90cdf4; }
+  .tag-type { background: #2d3748; color: #a0aec0; }
+  .tag-enabled { background: #276749; color: #68d391; }
+  .tag-disabled { background: #742a2a; color: #feb2b2; }
+
+  /* ── KPI Grid ── */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .kpi-card {
+    background: #1e2330;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 14px;
+  }
+  .kpi-card .label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+  .kpi-card .value { font-size: 20px; font-weight: 700; color: #fff; }
+  .kpi-card .sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+  /* ── Section ── */
+  .section { margin-bottom: 28px; }
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .section-title .count {
+    background: var(--border);
+    color: var(--text-muted);
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-weight: normal;
+  }
+
+  /* ── Execution Table ── */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    text-align: left;
+    padding: 8px 12px;
+    background: #1e2330;
+    color: var(--text-muted);
+    font-weight: 500;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 9px 12px;
+    border-bottom: 1px solid #1e2330;
+    vertical-align: middle;
+  }
+  tr:hover td { background: #1e2330; }
+  .exec-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .exec-status.success { color: var(--green); }
+  .exec-status.failed  { color: var(--red); }
+  .exec-status.running { color: var(--yellow); }
+  .exec-status.pending { color: var(--text-muted); }
+  .exec-status.skipped { color: var(--orange); }
+  .time-ago { font-size: 11px; color: var(--text-muted); }
+
+  /* ── Error List ── */
+  .error-item {
+    background: #1e2330;
+    border: 1px solid #742a2a;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+  }
+  .error-rule { font-size: 12px; font-weight: 500; color: #feb2b2; margin-bottom: 4px; }
+  .error-msg { font-size: 12px; color: var(--text-muted); font-family: monospace; }
+  .error-time { font-size: 11px; color: #4a5568; margin-top: 3px; }
+
+  /* ── Empty State ── */
+  .empty-state {
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--text-muted);
+  }
+  .empty-state svg { margin-bottom: 12px; opacity: 0.4; }
+  .empty-state p { font-size: 14px; }
+
+  /* ── No Selection ── */
+  .no-selection {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-muted);
+    font-size: 14px;
+    gap: 8px;
+  }
+
+  /* ── Data Table ── */
+  .data-table-wrap { overflow-x: auto; }
+  td.title { max-width: 360px; }
+  td.title a {
+    color: #63b3ed;
+    text-decoration: none;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  td.title a:hover { text-decoration: underline; }
+  td.url { max-width: 180px; }
+  td.url a { color: #68d391; text-decoration: none; font-size: 12px; }
+  td.url a:hover { text-decoration: underline; }
+  .time-cell { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+  .clue-tag {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+  }
+  .clue-policy    { background: #1c3a2a; color: #68d391; }
+  .clue-project   { background: #3a2d1c; color: #f6ad55; }
+  .clue-transaction { background: #2a1c3a; color: #b794f4; }
+  .clue-registration { background: #1c2a3a; color: #63b3ed; }
+  .clue-investment  { background: #3a1c2a; color: #fc8181; }
+  .clue-other     { background: #2d3748; color: #a0aec0; }
+
+  /* ── Toolbar ── */
+  .toolbar {
+    padding: 10px 24px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .toolbar select, .toolbar input {
+    background: #2d3748;
+    border: 1px solid #4a5568;
+    color: var(--text);
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  .btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 5px 14px;
+    border-radius: 5px;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s;
+  }
+  .btn:hover { background: var(--accent-hover); }
+  .btn-run { background: #276749; }
+  .btn-run:hover { background: #1e4d37; }
+
+  /* ── Responsive ── */
+  @media (max-width: 900px) {
+    .main { flex-direction: column; }
+    .panel-left { width: 100%; border-right: none; border-bottom: 1px solid var(--border); max-height: 240px; }
+    .stats-row { grid-template-columns: repeat(2, 1fr); }
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3182ce" stroke-width="2">
+    <circle cx="12" cy="12" r="10"/>
+    <path d="M12 6v6l4 2"/>
+  </svg>
+  <h1>数据采集看板</h1>
+  <span class="badge">InfoCollector v1.0</span>
+  <div class="header-right">
+    <span class="last-updated" id="lastUpdated">—</span>
+    <button class="btn btn-run" onclick="refreshAll()">▶ 全部执行</button>
+    <button class="btn" onclick="loadState()">↻ 刷新</button>
+  </div>
+</header>
+
+<!-- Stats Row -->
+<div class="stats-row" id="statsRow">
+  <div class="stat-cell">
+    <div class="label">总规则数</div>
+    <div class="value" id="statRules">-</div>
+    <div class="sub" id="statRulesSub">—</div>
+  </div>
+  <div class="stat-cell">
+    <div class="label">总采集条数</div>
+    <div class="value" id="statCollected">-</div>
+    <div class="sub" id="statRuns">— 次运行</div>
+  </div>
+  <div class="stat-cell">
+    <div class="label">最近成功</div>
+    <div class="value stat-ok" id="statSuccess">-</div>
+    <div class="sub">次</div>
+  </div>
+  <div class="stat-cell">
+    <div class="label">最近失败</div>
+    <div class="value stat-err" id="statFailed">-</div>
+    <div class="sub">次</div>
+  </div>
+</div>
+
+<!-- Tab Bar -->
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('overview', this)">概览</button>
+  <button class="tab-btn" onclick="switchTab('executions', this)">执行记录</button>
+  <button class="tab-btn" onclick="switchTab('errors', this)">错误日志</button>
+  <button class="tab-btn" onclick="switchTab('data', this)">数据查看</button>
+</div>
+
+<!-- Main -->
+<div class="main">
+
+  <!-- Left: Rules List -->
+  <div class="panel-left" id="rulesList">
+    <div class="panel-header">
+      <span>规则列表</span>
+      <button onclick="loadState()">↻</button>
+    </div>
+    <div id="rulesContainer"></div>
+  </div>
+
+  <!-- Right: Detail -->
+  <div class="panel-right" id="detailPanel">
+    <div class="no-selection" id="noSelection">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#4a5568" stroke-width="1.5">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <path d="M9 9h6M9 12h4"/>
+      </svg>
+      <span>← 请选择一个规则查看详情</span>
+    </div>
+
+    <!-- Overview Tab Content -->
+    <div id="tab-overview" style="display:none">
+      <div class="rule-detail" id="ruleDetail"></div>
+    </div>
+
+    <!-- Executions Tab Content -->
+    <div id="tab-executions" style="display:none; padding: 20px 24px;">
+      <div class="section">
+        <div class="section-title">
+          最近执行记录 <span class="count" id="execCount">0</span>
+        </div>
+        <div id="execList"></div>
+      </div>
+    </div>
+
+    <!-- Errors Tab Content -->
+    <div id="tab-errors" style="display:none; padding: 20px 24px;">
+      <div class="section">
+        <div class="section-title">
+          错误记录 <span class="count" id="errCount">0</span>
+        </div>
+        <div id="errList"></div>
+      </div>
+    </div>
+
+    <!-- Data Tab Content -->
+    <div id="tab-data" style="display:none">
+      <div class="toolbar">
+        <label>平台:</label>
+        <select id="filterPlatform" onchange="renderData()">
+          <option value="">全部平台</option>
+        </select>
+        <label>线索类型:</label>
+        <select id="filterClue" onchange="renderData()">
+          <option value="">全部类型</option>
+          <option value="policy">政策</option>
+          <option value="project">项目</option>
+          <option value="transaction">交易</option>
+          <option value="registration">登记</option>
+          <option value="investment">投资</option>
+        </select>
+        <label>关键词:</label>
+        <input type="text" id="filterKeyword" placeholder="搜索标题..." oninput="renderData()">
+      </div>
+      <div style="padding: 16px 24px;" id="dataSummary"></div>
+      <div class="data-table-wrap" style="padding: 0 24px 20px;" id="dataTable"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── Config ──────────────────────────────────────────────
+const STATE_FILE = '../engine/output/state.json';
+const DATA_DIR   = '../engine/output/';
+
+// ── State ──────────────────────────────────────────────
+let state = null;
+let currentTab = 'overview';
+let selectedRule = null;
+let allData = [];
+
+// ── Init ──────────────────────────────────────────────
+async function loadState() {
+  try {
+    const res = await fetch(STATE_FILE + '?t=' + Date.now());
+    if (!res.ok) throw new Error('state file not found');
+    state = await res.json();
+    renderStats();
+    renderRulesList();
+    renderCurrentTab();
+    document.getElementById('lastUpdated').textContent = '更新: ' + new Date().toLocaleTimeString('zh-CN');
+  } catch(e) {
+    console.error('loadState failed:', e);
+    document.getElementById('lastUpdated').textContent = '加载失败: ' + e.message;
+  }
+}
+
+async function refreshAll() {
+  if (!confirm('确认执行全部规则？')) return;
+  document.getElementById('lastUpdated').textContent = '执行中...';
+  // Call engine run_all via HTTP (requires backend) or just refresh state
+  // For now, just reload
+  await loadState();
+}
+
+// ── Render Stats ────────────────────────────────────────
+function renderStats() {
+  const stats = state.stats || {};
+  const rules = Object.values(state.rules || {});
+
+  const enabled = rules.filter(r => r.enabled).length;
+  const successExec = (state.executions || []).filter(e => e.status === 'success').length;
+  const failedExec = (state.executions || []).filter(e => e.status === 'failed').length;
+
+  document.getElementById('statRules').textContent = rules.length;
+  document.getElementById('statRulesSub').textContent = `${enabled} 启用`;
+  document.getElementById('statCollected').textContent = stats.total_collected || 0;
+  document.getElementById('statRuns').textContent = `${stats.total_runs || 0} 次运行`;
+  document.getElementById('statSuccess').textContent = successExec;
+  document.getElementById('statFailed').textContent = failedExec;
+}
+
+// ── Render Rules List ────────────────────────────────────
+function renderRulesList() {
+  const container = document.getElementById('rulesContainer');
+  const rules = Object.values(state.rules || {}).sort((a, b) => {
+    // Enabled first, then by last_run_at
+    if (a.enabled !== b.enabled) return b.enabled - a.enabled;
+    return (b.last_run_at || '').localeCompare(a.last_run_at || '');
+  });
+
+  if (rules.length === 0) {
+    container.innerHTML = '<div class="empty-state"><p>暂无规则，请先在 rules/ 目录添加 YAML</p></div>';
+    return;
+  }
+
+  container.innerHTML = rules.map(rule => {
+    const dotClass = rule.enabled
+      ? (rule.last_run_status === 'success' ? 'dot-success'
+         : rule.last_run_status === 'failed'  ? 'dot-failed'
+         : rule.last_run_status === 'running'  ? 'dot-running'
+         : 'dot-pending')
+      : 'dot-disabled';
+    const timeAgo = rule.last_run_at ? timeAgo(rule.last_run_at) : '从未运行';
+    const selClass = selectedRule && selectedRule.name === rule.name ? ' selected' : '';
+    return `<div class="rule-item${selClass}" onclick="selectRule('${rule.name.replace(/'/g,"\\'")}')">
+      <div class="rule-name">${rule.name}</div>
+      <div class="rule-meta">
+        <span class="status-dot ${dotClass}"></span>
+        <span>${rule.platform || rule.source_type}</span>
+        <span style="margin-left:auto">${timeAgo}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Select Rule ─────────────────────────────────────────
+function selectRule(name) {
+  const rules = Object.values(state.rules || {});
+  selectedRule = rules.find(r => r.name === name) || null;
+  document.querySelectorAll('.rule-item').forEach(el => el.classList.remove('selected'));
+  if (selectedRule) {
+    const els = document.querySelectorAll('.rule-item');
+    const idx = rules.indexOf(selectedRule);
+    if (els[idx]) els[idx].classList.add('selected');
+  }
+  switchTab('overview');
+}
+
+// ── Tab Switching ────────────────────────────────────────
+function switchTab(tab, btn) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  else {
+    const btns = document.querySelectorAll('.tab-btn');
+    const map = {overview:0, executions:1, errors:2, data:3};
+    if (map[tab] !== undefined && btns[map[tab]]) btns[map[tab]].classList.add('active');
+  }
+  renderCurrentTab();
+}
+
+function renderCurrentTab() {
+  ['overview','executions','errors','data'].forEach(t => {
+    const el = document.getElementById('tab-' + t);
+    if (el) el.style.display = t === currentTab ? 'block' : 'none';
+  });
+
+  if (currentTab === 'overview') {
+    document.getElementById('noSelection').style.display = selectedRule ? 'none' : 'flex';
+    document.getElementById('tab-overview').style.display = selectedRule ? 'block' : 'none';
+    if (selectedRule) renderRuleDetail(selectedRule);
+  } else if (currentTab === 'executions') {
+    renderExecutions();
+  } else if (currentTab === 'errors') {
+    renderErrors();
+  } else if (currentTab === 'data') {
+    loadDataFiles().then(renderData);
+  }
+}
+
+// ── Render Rule Detail ──────────────────────────────────
+function renderRuleDetail(rule) {
+  const el = document.getElementById('ruleDetail');
+  const timeAgo = rule.last_run_at ? timeAgo(rule.last_run_at) : '从未运行';
+  const lastRunStatus = rule.last_run_status || 'pending';
+  const statusLabel = {success:'成功', failed:'失败', running:'运行中', pending:'待执行'}[lastRunStatus] || lastRunStatus;
+
+  el.innerHTML = `
+    <div class="detail-header">
+      <div class="detail-title">${rule.name}</div>
+      ${rule.description ? `<div class="detail-desc">${rule.description}</div>` : ''}
+      <div class="detail-tags">
+        <span class="tag tag-platform">${rule.platform || '—'}</span>
+        <span class="tag tag-type">${rule.source_type}</span>
+        <span class="tag ${rule.enabled ? 'tag-enabled' : 'tag-disabled'}">${rule.enabled ? '已启用' : '已禁用'}</span>
+      </div>
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="label">运行次数</div>
+        <div class="value">${rule.total_runs || 0}</div>
+        <div class="sub">次</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">累计采集</div>
+        <div class="value">${rule.total_collected || 0}</div>
+        <div class="sub">条</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">最近采集</div>
+        <div class="value">${rule.last_collected || 0}</div>
+        <div class="sub">条 / ${timeAgo}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">最近状态</div>
+        <div class="value" style="font-size:16px;color:${
+          lastRunStatus==='success'?'var(--green)':lastRunStatus==='failed'?'var(--red)':'var(--text-muted)'
+        }">${statusLabel}</div>
+        <div class="sub">${rule.last_dedup_filtered || 0} 条去重过滤</div>
+      </div>
+    </div>
+    ${rule.last_error ? `
+    <div class="section">
+      <div class="section-title" style="color:var(--red)">最近错误</div>
+      <div class="error-item">
+        <div class="error-rule">${rule.name}</div>
+        <div class="error-msg">${rule.last_error}</div>
+      </div>
+    </div>` : ''}
+    <div class="section">
+      <div class="section-title">最近执行</div>
+      <table>
+        <thead><tr><th>时间</th><th>状态</th><th>采集</th><th>去重过滤</th><th>耗时</th></tr></thead>
+        <tbody>${
+          (state.executions || [])
+            .filter(e => e.rule_name === rule.name)
+            .slice(0, 10)
+            .map(e => `<tr>
+              <td class="time-cell">${formatTime(e.started_at)}</td>
+              <td><span class="exec-status ${e.status}">${statusDot(e.status)} ${statusLabelMap[e.status] || e.status}</span></td>
+              <td>${e.collected}</td>
+              <td>${e.dedup_filtered}</td>
+              <td class="time-cell">${e.duration_sec ? e.duration_sec + 's' : '—'}</td>
+            </tr>`).join('') || '<tr><td colspan="5" style="color:var(--text-muted)">暂无执行记录</td></tr>'
+        }</tbody>
+      </table>
+    </div>
+  `;
+}
+
+const statusLabelMap = {success:'成功', failed:'失败', running:'运行中', pending:'待执行', skipped:'已跳过'};
+function statusDot(s) {
+  const cls = {success:'dot-success', failed:'dot-failed', running:'dot-running', pending:'dot-pending', skipped:'dot-disabled'}[s] || 'dot-pending';
+  return `<span class="status-dot ${cls}"></span>`;
+}
+
+// ── Render Executions ────────────────────────────────────
+function renderExecutions() {
+  const list = (state.executions || []).slice(0, 30);
+  document.getElementById('execCount').textContent = list.length;
+  document.getElementById('execList').innerHTML = list.length ? `<table>
+    <thead><tr><th>规则</th><th>状态</th><th>采集</th><th>去重</th><th>耗时</th><th>开始时间</th></tr></thead>
+    <tbody>${
+      list.map(e => `<tr>
+        <td><div style="font-size:13px;font-weight:500">${e.rule_name}</div></td>
+        <td><span class="exec-status ${e.status}">${statusDot(e.status)} ${statusLabelMap[e.status] || e.status}</span></td>
+        <td>${e.collected}</td>
+        <td>${e.dedup_filtered}</td>
+        <td class="time-cell">${e.duration_sec ? e.duration_sec + 's' : '—'}</td>
+        <td class="time-cell">${formatTime(e.started_at)}</td>
+      </tr>`).join('')
+    }</tbody>
+  </table>` : '<div class="empty-state"><p>暂无执行记录</p></div>';
+}
+
+// ── Render Errors ────────────────────────────────────────
+function renderErrors() {
+  const list = (state.errors || []).slice(0, 30);
+  document.getElementById('errCount').textContent = list.length;
+  document.getElementById('errList').innerHTML = list.length ? list.map(e => `<div class="error-item">
+    <div class="error-rule">${e.rule_name}</div>
+    <div class="error-msg">${e.error}</div>
+    <div class="error-time">${formatTime(e.occurred_at)}</div>
+  </div>`).join('') : '<div class="empty-state"><p>暂无错误记录 ✓</p></div>';
+}
+
+// ── Data Loading ────────────────────────────────────────
+async function loadDataFiles() {
+  allData = [];
+  const platformSet = new Set();
+
+  // Load state.json executions for unique data sources
+  for (const exec of (state.executions || [])) {
+    if (exec.output_path && exec.output_path.endsWith('.json')) {
+      try {
+        const r = await fetch(exec.output_path + '?t=' + Date.now());
+        if (r.ok) {
+          const j = await r.json();
+          for (const item of (j.data || [])) {
+            item._rule = exec.rule_name;
+            item._collected_at = j.meta?.collected_at;
+            if (item.platform) platformSet.add(item.platform);
+            allData.push(item);
+          }
+        }
+      } catch(e) {}
+    }
+  }
+
+  // Also scan output dir for JSON files
+  try {
+    const dirRes = await fetch(DATA_DIR + '?t=' + Date.now());
+    if (dirRes.ok) {
+      const text = await dirRes.text();
+      const files = [...text.matchAll(/href="([^"]+\.json)"/g)]
+        .map(m => m[1])
+        .filter(f => !f.includes('state.json') && !f.includes('combined'));
+
+      for (const file of files.slice(0, 20)) {
+        try {
+          const r = await fetch(DATA_DIR + file + '?t=' + Date.now());
+          if (!r.ok) continue;
+          const j = await r.json();
+          for (const item of (j.data || [])) {
+            if (!allData.find(x => x.url === item.url)) {
+              item._rule = file;
+              item._collected_at = j.meta?.collected_at;
+              if (item.platform) platformSet.add(item.platform);
+              allData.push(item);
+            }
+          }
+        } catch(e2) {}
+      }
+    }
+  } catch(e) {}
+
+  // Populate platform filter
+  const sel = document.getElementById('filterPlatform');
+  sel.innerHTML = '<option value="">全部平台</option>';
+  [...platformSet].sort().forEach(p => {
+    sel.innerHTML += `<option value="${p}">${p}</option>`;
+  });
+
+  return allData;
+}
+
+function renderData() {
+  const platform = document.getElementById('filterPlatform').value;
+  const clue = document.getElementById('filterClue').value;
+  const keyword = document.getElementById('filterKeyword').value.toLowerCase();
+
+  let filtered = allData;
+  if (platform) filtered = filtered.filter(i => i.platform === platform);
+  if (clue) filtered = filtered.filter(i => i.clue_type === clue);
+  if (keyword) filtered = filtered.filter(i =>
+    (i.title && i.title.toLowerCase().includes(keyword)) ||
+    (i.company && i.company.toLowerCase().includes(keyword))
+  );
+
+  document.getElementById('dataSummary').innerHTML =
+    `<div style="font-size:13px;color:var(--text-muted)">共 <b style="color:var(--text)">${filtered.length}</b> 条 / ${allData.length} 条</div>`;
+
+  const table = document.getElementById('dataTable');
+  if (!filtered.length) {
+    table.innerHTML = '<div class="empty-state"><p>暂无数据</p></div>';
+    return;
+  }
+
+  table.innerHTML = `<table>
+    <thead><tr>
+      <th>#</th><th>标题</th><th>平台</th><th>线索类型</th><th>时间</th><th>公司</th><th>链接</th>
+    </tr></thead>
+    <tbody>${
+      filtered.slice(0, 200).map((item, i) => {
+        const title = item.title || '—';
+        const url = item.url || '#';
+        const clue = item.clue_type || 'other';
+        return `<tr>
+          <td style="color:var(--text-muted);font-size:12px">${i+1}</td>
+          <td class="title"><a href="${url}" target="_blank" title="${title.replace(/"/g,'&quot;')}">${title}</a></td>
+          <td>${item.platform || '—'}</td>
+          <td><span class="clue-tag clue-${clue}">${clueLabel(clue)}</span></td>
+          <td class="time-cell">${formatTime(item.publish_time || item._collected_at)}</td>
+          <td style="color:var(--text-muted);font-size:12px">${item.company || '—'}</td>
+          <td class="url"><a href="${url}" target="_blank" title="${url}">${shortUrl(url)}</a></td>
+        </tr>`;
+      }).join('')
+    }</tbody>
+  </table>`;
+}
+
+// ── Utilities ───────────────────────────────────────────
+function timeAgo(iso) {
+  if (!iso) return '—';
+  const diff = (Date.now() - new Date(iso)) / 1000;
+  if (diff < 60) return '刚刚';
+  if (diff < 3600) return Math.floor(diff/60) + '分钟前';
+  if (diff < 86400) return Math.floor(diff/3600) + '小时前';
+  return Math.floor(diff/86400) + '天前';
+}
+
+function formatTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  return d.toLocaleString('zh-CN', {month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'});
+}
+
+function shortUrl(url) {
+  if (url === '#' || !url) return '—';
+  const u = url.replace(/^https?:\/\//, '');
+  return u.length > 40 ? u.slice(0, 40) + '…' : u;
+}
+
+function clueLabel(c) {
+  return {policy:'政策', project:'项目', transaction:'交易', registration:'登记', investment:'投资'}[c] || c || '—';
+}
+
+// ── Boot ────────────────────────────────────────────────
+loadState();
+setInterval(loadState, 30000); // Auto-refresh every 30s
+</script>
+</body>
+</html>

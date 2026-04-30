@@ -1,72 +1,48 @@
 name: "钛媒体 - 数据要素相关文章"
-version: "1.0.0"
+version: "1.0.2"
 description: "从钛媒体官网抓取数据要素相关文章列表，适合追踪数据行业动态、政策解读、应用案例"
 
 source:
   platform: "tmtpost"
-  type: "html"  # 直接 HTML 页面抓取，无需 JS 渲染
+  type: "html"
   url: "https://www.tmtpost.com/"
   auth:
     type: "none"
 
 render:
-  enabled: false  # 页面为 SSR，内容已在 HTML 中
+  enabled: false  # SSR页面，HTML中已有内容
 
 list:
-  # 钛媒体列表页文章链接在 <a class="_tit type-post" href="..."> 中
-  # 实际通过页面内 JavaScript 渲染，但 HTML 中已含部分结构
-  items_path: "//a[contains(@class, 'type-post')]"
+  # 正则：捕获 <a class="...item...type-post..." href="URL">...<img alt="TITLE">...
+  items_path: 'regex:<a[^>]*class="[^"]*item[^"]*type-post[^"]*"[^>]*href="([^"]+)"[^>]*>.*?<img[^>]*alt="([^"]+)"[^>]*>'
   fields:
     - name: "title"
-      type: "attr"
-      path: "//a[contains(@class, 'type-post')]"
-      attr: "text"
+      type: "element_text"  # 从parse_items返回的title字段获取
     - name: "url"
-      type: "attr"
-      path: "//a[contains(@class, 'type-post')]"
-      attr: "href"
+      type: "element_href"  # 从parse_items返回的href字段获取
     - name: "platform"
       type: "constant"
       value: "钛媒体"
     - name: "publish_time"
-      type: "computed"
-      # 钛媒体文章列表页时间格式为相对时间如"3小时前"，需二次采集详情页获取绝对时间
+      type: "constant"
       value: null
     - name: "company"
-      type: "computed"
-      value: null  # 列表页无公司字段，需进入详情页
+      type: "constant"
+      value: null
     - name: "clue_type"
-      type: "computed"
-      value: "policy"  # 默认归类为政策/行业动态
+      type: "constant"
+      value: "policy"
     - name: "summary"
-      type: "computed"
-      value: null  # 列表页无摘要，需进入详情页
+      type: "constant"
+      value: null
 
 detail:
-  # 进入文章详情页，提取完整信息
-  enabled: true
-  fields:
-    - name: "title"
-      type: "xpath"
-      path: "//h1[contains(@class, 'article-title')]//text()"
-    - name: "publish_time"
-      type: "xpath"
-      path: "//span[contains(@class, 'time')]//text()"
-    - name: "author"
-      type: "xpath"
-      path: "//span[contains(@class, 'author-name')]//text()"
-    - name: "content"
-      type: "xpath"
-      path: "//div[contains(@class, 'article-content')]//text()"
-      transform: "strip_html,trim"
-    - name: "tags"
-      type: "xpath"
-      path: "//a[contains(@class, 'tag-item')]//text()"
+  enabled: false  # 列表页已有标题和URL，可直接使用
 
 dedup:
   incremental: true
-  id_template: "tmtpost_{url_hash}"
-  # 从 URL 提取文章 ID
+  id_template: "tmtpost_{article_id}"
+  url_to_id_pattern: "tmtpost\\.com/(\\d+)\\.html"
 
 output:
   format: "json"

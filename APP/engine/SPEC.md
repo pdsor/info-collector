@@ -35,12 +35,19 @@ description: "规则描述"
 
 source:
   platform: "平台标识"
-  type: "api" | "html"  # api=调用API，html=解析HTML
+  type: "api" | "html" | "browser"  # api=调用API，html=解析HTML，browser=Playwright渲染
   base_url: "https://..."  # API场景
   url: "https://..."       # HTML场景
   auth:
     type: "none" | "cookie" | "api_key" | "oauth"
     credential: "..."  # 环境变量引用或直接值
+
+render:              # 仅 source.type=browser 时有效
+  enabled: true      # 是否启用浏览器渲染
+  headless: true     # 是否无头
+  stealth: true      # 是否启用反检测
+  wait_for_selector: null   # 等待元素选择器
+  wait_for_timeout: 3000    # 等待超时（毫秒）
 
 request:
   method: "GET" | "POST"
@@ -84,14 +91,38 @@ alert:
 
 ## 4. Key Classes
 
-| Class | Responsibility |
-|-------|----------------|
-| `RuleParser` | 解析 YAML 规则文件，验证必填字段 |
-| `Deduplicator` | SQLite 全局去重，管理 dedup.db |
-| `APICrawler` | 处理 API 类型数据源 |
-| `HTMLCrawler` | 处理 HTML 类型数据源，使用 XPath 解析 |
-| `OutputManager` | 管理 JSON 输出 |
-| `InfoCollectorEngine` | 核心引擎，协调各组件 |
+| Class | Responsibility | Source Type |
+|-------|----------------|-------------|
+| `RuleParser` | 解析 YAML 规则文件，验证必填字段 | — |
+| `Deduplicator` | SQLite 全局去重，管理 dedup.db | — |
+| `APICrawler` | 处理 API 类型数据源 | `api` |
+| `HTMLCrawler` | 处理 HTML 类型数据源，使用正则/XPath 解析 | `html` |
+| `BrowserCrawler` | 处理 JS 渲染页面，Playwright 无头浏览器 | `browser` |
+| `OutputManager` | 管理 JSON 输出 | — |
+| `InfoCollectorEngine` | 核心引擎，协调各组件 | — |
+
+### 4.1 BrowserCrawler 配置参数
+
+```python
+render_config = {
+    "headless": True,           # 是否无头（默认 True）
+    "stealth": True,            # 是否启用反检测（默认 True）
+    "user_agent": "random",     # "random" 或具体 UA 字符串
+    "wait_for_selector": None,  # CSS 选择器，等待该元素出现
+    "wait_for_timeout": 3000,   # 等待超时（毫秒）
+    "viewport_width": 1920,
+    "viewport_height": 1080,
+    "extra_headers": {},         # 额外 HTTP 头
+}
+```
+
+### 4.2 Source Type 路由规则
+
+| source.type | Crawler | 依赖 |
+|-------------|---------|------|
+| `api` | `APICrawler` | requests |
+| `html` | `HTMLCrawler` | requests |
+| `browser` | `BrowserCrawler` | playwright + chromium |
 
 ## 5. Deduplication Schema
 
@@ -139,7 +170,8 @@ id = id_template.format(raw_id=raw_id)
 | test_dedup.py | SQLite 去重、增量过滤 |
 | test_output.py | JSON 输出格式化 |
 | test_crawl_api.py | API 请求、响应解析、分页 |
-| test_crawl_html.py | HTML 解析、XPath 提取 |
+| test_crawl_html.py | HTML 解析、正则/XPath 提取 |
+| test_crawl_browser.py | Playwright 渲染、UA 随机化、正则解析 |
 
 ## 8. Implementation Tasks
 

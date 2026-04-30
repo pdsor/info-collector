@@ -51,14 +51,15 @@ class TestRuleParser:
         assert items_path == "$.announcements[*]"
 
     def test_parse_items_path_html(self):
-        """Test XPath parsing for HTML sources"""
+        """Test XPath/regex parsing for HTML sources"""
         from engine.rule_parser import RuleParser
-        
+
         parser = RuleParser()
         rule = parser.load_rule("rules/tmtpost_data_articles.yaml")
-        
+
         items_path = rule["list"]["items_path"]
-        assert "//a" in items_path
+        # tmtpost uses regex mode now
+        assert "regex:" in items_path
 
     def test_parse_field_definitions(self):
         """Test parsing field definitions"""

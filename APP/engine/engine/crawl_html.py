@@ -13,22 +13,37 @@ class HTMLCrawler:
         response.encoding = response.apparent_encoding or 'utf-8'
         return response.text
     
-    def parse_items(self, html_content: str, xpath: str) -> list:
-        """Parse items from HTML using simple pattern matching"""
-        if "contains(@class" in xpath:
-            # e.g., //a[contains(@class, 'type-post')]
-            match = re.search(r"//(\w+)\[contains\(@class,\s*'([^']+)'\)", xpath)
+    def parse_items(self, html_content: str, items_path: str) -> list:
+        """Parse items from HTML using regex-based extraction.
+
+        Supports two modes:
+          - regex:"<pattern>"  — full regex with named or numbered groups: href, text, title
+          - xpath:"//tag[@class='name']"  — legacy XPath-style simple class matching
+        """
+        if items_path.startswith("regex:"):
+            pattern = items_path[6:]  # strip "regex:" prefix
+            results = []
+            for m in re.finditer(pattern, html_content):
+                groups = m.groups()
+                if len(groups) >= 2:
+                    results.append({"href": groups[0], "title": groups[1]})
+                elif len(groups) == 1:
+                    results.append({"href": groups[0]})
+            return results
+
+        # Legacy XPath-style: only handles simple class-based matching
+        if "contains(@class" in items_path:
+            match = re.search(r"//(\w+)\[contains\(@class,\s*'([^']+)'\)\]", items_path)
             if match:
                 tag, class_name = match.groups()
-                pattern = rf"<{tag}[^>]*class=['\"][^'\"]*{re.escape(class_name)}[^'\"]*['\"][^>]*href=['\"]([^'\"]+)['\"][^>]*>"
+                pattern = rf"<{tag}[^>]*class=['\"]?[^\"']*{re.escape(class_name)}[^\"']*['\"]?[^>]*href=['\"]([^\"']+)['\"][^>]*>"
                 matches = re.findall(pattern, html_content)
                 return [{"href": m} for m in matches]
-        elif "@class=" in xpath:
-            # e.g., //a[@class='test']
-            match = re.search(r"//(\w+)\[@class=['\"]([^'\"]+)['\"]\]", xpath)
+        elif "@class=" in items_path:
+            match = re.search(r"//(\w+)\[@class=['\"]([^'\"]+)['\"]\]", items_path)
             if match:
                 tag, class_name = match.groups()
-                pattern = rf"<{tag}[^>]*class=['\"]{re.escape(class_name)}['\"][^>]*>"
+                pattern = rf"<{tag}[^>]*class=['\"]?{re.escape(class_name)}['\"]?[^>]*>"
                 matches = re.findall(pattern, html_content)
                 return [{"html": m} for m in matches]
         return []

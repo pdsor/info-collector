@@ -1,6 +1,33 @@
+# Python
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Test
 .pytest_cache/
-*.db
+.coverage
+htmlcov/
+
+# Output & DB
 output/
+dedup.db
+*.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.log
+.env
