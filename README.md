@@ -7,36 +7,50 @@
 ```
 info-collector/
 ├── APP/
-│   ├── engine/          # 采集引擎（Python）
-│   │   ├── engine/
-│   │   │   ├── engine.py       # 核心引擎
-│   │   │   ├── rule_parser.py  # YAML 规则解析
-│   │   │   ├── dedup.py        # SQLite 全局去重
-│   │   │   ├── state.py        # 状态管理（state.json）
-│   │   │   ├── output.py       # JSON 输出管理
-│   │   │   ├── crawl_api.py    # API 采集
-│   │   │   ├── crawl_html.py   # HTML 采集
-│   │   │   └── crawl_browser.py # 浏览器渲染采集（Playwright）
-│   │   ├── rules/              # YAML 采集规则
-│   │   ├── output/             # 采集输出（JSON + state.json）
-│   │   ├── tests/
-│   │   └── requirements.txt
-│   └── dashboard/       # 数据看板（纯 HTML/CSS/JS）
+│   ├── engine/                      # 采集引擎（Python）
+│   │   ├── engine_cli.py            # CLI 入口（强制 venv 检查）
+│   │   ├── venv.sh                  # 虚拟环境管理脚本
+│   │   ├── requirements.txt         # 依赖清单
+│   │   ├── dedup.db                 # SQLite 去重数据库（自动生成）
+│   │   ├── engine/                  # 核心代码包
+│   │   │   ├── engine.py            # 核心引擎
+│   │   │   ├── rule_parser.py       # YAML 规则解析
+│   │   │   ├── dedup.py             # SQLite 全局去重
+│   │   │   ├── state.py             # 状态管理（state.json）
+│   │   │   ├── output.py            # JSON 输出管理
+│   │   │   ├── crawl_api.py         # API 采集
+│   │   │   ├── crawl_html.py        # HTML 采集
+│   │   │   └── crawl_browser.py     # 浏览器渲染采集（Playwright）
+│   │   ├── rules/                   # YAML 采集规则
+│   │   ├── output/                  # 采集输出（JSON + state.json）
+│   │   └── tests/                   # 单元测试
+│   └── dashboard/                   # 数据看板（纯 HTML/CSS/JS）
 │       └── index.html
 ├── DOCS/
-│   └── manual.md        # 操作手册
+│   └── manual.md                    # 操作手册
 └── .gitignore
 ```
 
 ## 快速开始
 
-### 1. 安装依赖
+### 1. 创建虚拟环境并安装依赖
 
 ```bash
 cd APP/engine
+
+# 方式一（推荐）：使用 venv 管理脚本，一步完成
+./venv.sh create
+
+# 方式二：手动操作
+python3 -m venv .venv
+source .venv/bin/activate        # Linux/macOS
+# .\.venv\\Scripts\\Activate.ps1  # Windows PowerShell
+pip install --upgrade pip
 pip install -r requirements.txt
-playwright install chromium  # 仅首次，浏览器渲染模式需要
+playwright install chromium       # 仅首次，浏览器渲染模式需要
 ```
+
+> ⚠️ **必须使用虚拟环境**。直接用系统 Python 安装会导致依赖冲突。`engine_cli.py` 内置 venv 检查，非虚拟环境运行时会报错。
 
 ### 2. 配置规则
 
@@ -45,7 +59,13 @@ playwright install chromium  # 仅首次，浏览器渲染模式需要
 ### 3. 运行采集
 
 ```bash
-python -c "from engine.engine import InfoCollectorEngine; e = InfoCollectorEngine(); e.run_all('./rules')"
+# 使用 venv 运行
+./venv.sh run python engine_cli.py --run-all
+
+# 或手动激活后运行
+source .venv/bin/activate
+python engine_cli.py --run-all
+deactivate
 ```
 
 ### 4. 查看看板
