@@ -1,2 +1,245 @@
-from flask import Blueprint
+"""
+Cron API — 定时任务管理
+"""
+import sqlite3
+import json
+from flask import Blueprint, request, jsonify
+from datetime import datetime
+
 cron_bp = Blueprint("cron", __name__)
+
+DB_PATH = "APP/dashboard/dashboard.db"
+
+
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def load_crons_from_db():
+    """启动时从 DB 加载 cron 配置到 APScheduler"""
+    from flask import current_app
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM cron_jobs WHERE enabled = 1")
+    jobs = cur.fetchall()
+    conn.close()
+    for job in jobs:
+        _add_scheduler_job(job)
+
+
+def _add_scheduler_job(job_row):
+    """将单个 cron job 添加到调度器"""
+    from flask import current_app
+    scheduler = current_app.extensions.get("scheduler")
+    if not scheduler:
+        return
+    job_id = f"cron_{job_row['id']}"
+
+    def _run_cron():
+        # 调用 run-all
+        import subprocess, os, time
+        ENGINE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "engine")
+        VENV_PY = os.path.join(ENGINE_DIR, ".venv", "bin", "python")
+        subprocess.Popen(
+            [VENV_PY, os.path.join(ENGINE_DIR, "engine_cli.py"), "run-all"],
+            cwd=ENGINE_DIR,
+        )
+
+    # 移除旧的（如果存在）
+    try:
+        scheduler.remove_job(job_id)
+    except Exception:
+        pass
+
+    # 添加新的
+    scheduler.add_job(
+        _run_cron,
+        "cron",
+        job_id=job_id,
+        second=int(job_row.get("second", 0) or 0),
+        minute=int(job_row.get("minute", 0) or 0),
+        hour=int(job_row.get("hour", 0) or 0),
+        day=int(job_row.get("day", 0) or 0),
+        month=int(job_row.get("month", 0) or 0),
+        day_of_week=job_row.get("day_of_week", "*"),
+        id=job_id,
+        replace_existing=True,
+    )
+
+
+@cron_bp.route("", methods=["GET"])
+def list_crons():
+    """GET /api/cron — 列出所有 cron 任务"""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM cron_jobs ORDER BY id DESC")
+    rows = cur.fetchall()
+    conn.close()
+    return jsonify({"crons": [dict(r) for r in rows]})
+
+
+@cron_bp.route("", methods=["POST"])
+def create_cron():
+    """POST /api/cron — 创建 cron 任务"""
+    body = request.get_json()
+    name = body.get("name", "").strip()
+    schedule = body.get("schedule", "")
+    rule_path = body.get("rule_path", "")
+    enabled = bool(body.get("enabled", True))
+
+    if not name or not schedule:
+        return jsonify({"error": "name and schedule required"}), 400
+
+    # 解析 cron 表达式
+    parts = schedule.split()
+    if len(parts) < 5:
+        return jsonify({"error": "Invalid cron format, need at least 5 fields"}), 400
+
+    second = parts[0] if len(parts) > 5 else "0"
+    minute, hour, day, month, dow = parts[-5], parts[-4], parts[-3], parts[-2], parts[-1]
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        """INSERT INTO cron_jobs (name, second, minute, hour, day, month, day_of_week, rule_path, enabled)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (name, second, minute, hour, day, month, dow, rule_path, 1 if enabled else 0),
+    )
+    conn.commit()
+    job_id = cur.lastrowid
+    conn.close()
+
+    # 如果启用，立即添加到调度器
+    if enabled:
+        from flask import current_app
+        conn2 = get_db()
+        cur2 = conn2.cursor()
+        cur2.execute("SELECT * FROM cron_jobs WHERE id = ?", (job_id,))
+        job_row = dict(cur2.fetchone())
+        conn2.close()
+        _add_scheduler_job(job_row)
+
+    return jsonify({"id": job_id, "success": True}), 201
+
+
+@cron_bp.route("/<int:cron_id>", methods=["GET"])
+def get_cron(cron_id):
+    """GET /api/cron/<id>"""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM cron_jobs WHERE id = ?", (cron_id,))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify(dict(row))
+
+
+@cron_bp.route("/<int:cron_id>", methods=["PUT"])
+def update_cron(cron_id):
+    """PUT /api/cron/<id> — 更新 cron 任务"""
+    body = request.get_json()
+    conn = get_db()
+    cur = conn.cursor()
+
+    # 获取现有
+    cur.execute("SELECT * FROM cron_jobs WHERE id = ?", (cron_id,))
+    existing = cur.fetchone()
+    if not existing:
+        conn.close()
+        return jsonify({"error": "Not found"}), 404
+
+    name = body.get("name", existing["name"])
+    schedule = body.get("schedule", None)
+    rule_path = body.get("rule_path", existing["rule_path"])
+    enabled = body.get("enabled", bool(existing["enabled"]))
+
+    if schedule:
+        parts = schedule.split()
+        second = parts[0] if len(parts) > 5 else "0"
+        minute, hour, day, month, dow = parts[-5], parts[-4], parts[-3], parts[-2], parts[-1]
+    else:
+        second = existing["second"]
+        minute = existing["minute"]
+        hour = existing["hour"]
+        day = existing["day"]
+        month = existing["month"]
+        dow = existing["day_of_week"]
+
+    cur.execute(
+        """UPDATE cron_jobs SET name=?, second=?, minute=?, hour=?, day=?, month=?,
+           day_of_week=?, rule_path=?, enabled=? WHERE id=?""",
+        (name, second, minute, hour, day, month, dow, rule_path, 1 if enabled else 0, cron_id),
+    )
+    conn.commit()
+    conn.close()
+
+    # 重新注册调度器
+    from flask import current_app
+    scheduler = current_app.extensions.get("scheduler")
+    if scheduler:
+        try:
+            scheduler.remove_job(f"cron_{cron_id}")
+        except Exception:
+            pass
+        if enabled:
+            conn2 = get_db()
+            cur2 = conn2.cursor()
+            cur2.execute("SELECT * FROM cron_jobs WHERE id = ?", (cron_id,))
+            job_row = dict(cur2.fetchone())
+            conn2.close()
+            _add_scheduler_job(job_row)
+
+    return jsonify({"success": True})
+
+
+@cron_bp.route("/<int:cron_id>", methods=["DELETE"])
+def delete_cron(cron_id):
+    """DELETE /api/cron/<id>"""
+    from flask import current_app
+    scheduler = current_app.extensions.get("scheduler")
+    if scheduler:
+        try:
+            scheduler.remove_job(f"cron_{cron_id}")
+        except Exception:
+            pass
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM cron_jobs WHERE id = ?", (cron_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+
+@cron_bp.route("/<int:cron_id>/toggle", methods=["POST"])
+def toggle_cron(cron_id):
+    """POST /api/cron/<id>/toggle — 启用/停用"""
+    body = request.get_json()
+    enabled = bool(body.get("enabled", True))
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE cron_jobs SET enabled=? WHERE id=?", (1 if enabled else 0, cron_id))
+    conn.commit()
+    conn.close()
+
+    from flask import current_app
+    scheduler = current_app.extensions.get("scheduler")
+    if scheduler:
+        job_id = f"cron_{cron_id}"
+        try:
+            scheduler.remove_job(job_id)
+        except Exception:
+            pass
+        if enabled:
+            conn2 = get_db()
+            cur2 = conn2.cursor()
+            cur2.execute("SELECT * FROM cron_jobs WHERE id = ?", (cron_id,))
+            job_row = dict(cur2.fetchone())
+            conn2.close()
+            _add_scheduler_job(job_row)
+
+    return jsonify({"success": True, "enabled": enabled})

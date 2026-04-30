@@ -73,8 +73,13 @@ setup_logging()
 scheduler = BackgroundScheduler(timezone="Asia/Shanghai")
 
 # Import and register blueprints after app is created
-from apis import register_blueprints
+from APP.dashboard.apis import register_blueprints
 register_blueprints(app, scheduler)
+
+# Store scheduler in app.extensions so blueprints can access it
+if not hasattr(app, "extensions"):
+    app.extensions = {}
+app.extensions["scheduler"] = scheduler
 
 # Init database
 init_db()
