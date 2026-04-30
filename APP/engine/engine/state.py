@@ -33,15 +33,20 @@ class StateManager:
             return self._empty_state()
         try:
             with open(self.state_file, "r", encoding="utf-8") as f:
-                return json.load(f)
+                state = json.load(f)
+            # Migration: add 'subjects' key if missing (old state format)
+            if "subjects" not in state:
+                state["subjects"] = {}
+            return state
         except (json.JSONDecodeError, IOError):
             return self._empty_state()
 
     def _empty_state(self) -> dict:
         return {
-            "rules": {},       # rule_name -> rule_config
-            "executions": [],  # 最近 N 条执行记录
-            "errors": [],      # 最近 N 条错误
+            "subjects": {},   # subject_name -> {display_name, rule_names}
+            "rules": {},      # rule_name -> rule_config
+            "executions": [], # 最近 N 条执行记录
+            "errors": [],     # 最近 N 条错误
             "stats": {
                 "total_collected": 0,
                 "total_runs": 0,
@@ -57,14 +62,27 @@ class StateManager:
     # ── 规则管理 ──────────────────────────────────────────────
 
     def register_rule(self, rule_path: str, rule: dict) -> str:
-        """注册或更新规则，返回规则唯一标识（name）"""
+        """注册或更新规则，同时注册/更新 subject。返回规则唯一标识（name）。"""
         name = rule.get("name", os.path.basename(rule_path))
         enabled = rule.get("enabled", True)
+        subject = rule.get("subject") or rule.get("source", {}).get("subject")
+
+        # Register subject if not exists, update rule_names list otherwise
+        if subject:
+            if subject not in self._state["subjects"]:
+                self._state["subjects"][subject] = {
+                    "display_name": subject,
+                    "rule_names": [],
+                }
+            subject_entry = self._state["subjects"][subject]
+            if name not in subject_entry["rule_names"]:
+                subject_entry["rule_names"].append(name)
 
         rule_entry = {
             "name": name,
             "version": rule.get("version", "1.0.0"),
             "description": rule.get("description", ""),
+            "subject": subject or "",
             "platform": rule.get("source", {}).get("platform", ""),
             "source_type": rule.get("source", {}).get("type", "html"),
             "url": rule.get("source", {}).get("url") or rule.get("source", {}).get("base_url", ""),
@@ -206,19 +224,26 @@ class StateManager:
     # ── 全量规则扫描注册 ──────────────────────────────────────
 
     def scan_and_register_rules(self, rules_dir: str) -> int:
-        """扫描 rules 目录，自动注册所有 YAML 规则文件"""
+        """扫描 rules 目录（含子目录），自动注册所有 YAML 规则文件。"""
         import yaml
         count = 0
-        for fname in os.listdir(rules_dir):
-            if not fname.endswith(".yaml") and not fname.endswith(".yml"):
-                continue
-            fpath = os.path.join(rules_dir, fname)
-            try:
-                with open(fpath, "r", encoding="utf-8") as f:
-                    rule = yaml.safe_load(f)
-                if rule and "name" in rule:
-                    self.register_rule(fpath, rule)
-                    count += 1
-            except Exception:
-                pass
+
+        def scan_dir(directory: str):
+            nonlocal count
+            for entry in sorted(os.listdir(directory)):
+                full_path = os.path.join(directory, entry)
+                if os.path.isdir(full_path):
+                    # Recurse into subject subdirectories
+                    scan_dir(full_path)
+                elif entry.endswith(".yaml") or entry.endswith(".yml"):
+                    try:
+                        with open(full_path, "r", encoding="utf-8") as f:
+                            rule = yaml.safe_load(f)
+                        if rule and "name" in rule:
+                            self.register_rule(full_path, rule)
+                            count += 1
+                    except Exception:
+                        pass
+
+        scan_dir(rules_dir)
         return count

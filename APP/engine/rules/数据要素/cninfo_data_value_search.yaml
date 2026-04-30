@@ -1,10 +1,12 @@
 name: "巨潮资讯 - 数据要素相关公告"
+subject: "数据要素"
 version: "1.0.0"
 description: "从巨潮资讯网搜索数据要素相关上市公司公告，适合追踪数据资产入表、数据产品登记等线索"
 
 source:
   platform: "cninfo"
   type: "api"  # 直接调用 API，无需渲染
+  subject: "数据要素"
   base_url: "https://www.cninfo.com.cn/new/fulltextSearch/full"
   auth:
     type: "none"
@@ -69,7 +71,6 @@ pagination:
 
 output:
   format: "json"
-  path: "./output/cninfo/"
   filename_template: "cninfo_data_value_{date}.json"
 
 alert:

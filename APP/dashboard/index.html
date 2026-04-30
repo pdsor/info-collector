@@ -107,7 +107,28 @@
   /* ── Main Layout ── */
   .main { display: flex; min-height: calc(100vh - 120px); }
 
-  /* ── Left Panel: Rules List ── */
+  .subject-group-header {
+    padding: 8px 16px 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border-bottom: 1px solid #1e2330;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    user-select: none;
+  }
+  .subject-group-header:hover { color: var(--text); }
+  .subject-group-header .sg-arrow {
+    font-size: 10px;
+    transition: transform 0.15s;
+  }
+  .subject-group-header.collapsed .sg-arrow { transform: rotate(-90deg); }
+  .subject-rules { overflow: hidden; }
+  .subject-rules.collapsed { display: none; }
   .panel-left {
     width: 280px;
     min-width: 280px;
@@ -569,38 +590,91 @@ function renderStats() {
   document.getElementById('statFailed').textContent = failedExec;
 }
 
-// ── Render Rules List ────────────────────────────────────
+// ── Subject Group State ─────────────────────────────────
+// Track which subjects are collapsed (default: all expanded)
+let collapsedSubjects = new Set();
+
+function toggleSubject(subject) {
+  if (collapsedSubjects.has(subject)) {
+    collapsedSubjects.delete(subject);
+  } else {
+    collapsedSubjects.add(subject);
+  }
+  renderRulesList();
+}
+
+// ── Render Rules List (subject-grouped) ────────────────
 function renderRulesList() {
   const container = document.getElementById('rulesContainer');
-  const rules = Object.values(state.rules || {}).sort((a, b) => {
-    // Enabled first, then by last_run_at
-    if (a.enabled !== b.enabled) return b.enabled - a.enabled;
-    return (b.last_run_at || '').localeCompare(a.last_run_at || '');
-  });
+  const rules = Object.values(state.rules || {});
+  const subjects = state.subjects || {};
 
   if (rules.length === 0) {
     container.innerHTML = '<div class="empty-state"><p>暂无规则，请先在 rules/ 目录添加 YAML</p></div>';
     return;
   }
 
-  container.innerHTML = rules.map(rule => {
-    const dotClass = rule.enabled
-      ? (rule.last_run_status === 'success' ? 'dot-success'
-         : rule.last_run_status === 'failed'  ? 'dot-failed'
-         : rule.last_run_status === 'running'  ? 'dot-running'
-         : 'dot-pending')
-      : 'dot-disabled';
-    const timeAgoStr = rule.last_run_at ? timeAgo(rule.last_run_at) : '从未运行';
-    const selClass = selectedRule && selectedRule.name === rule.name ? ' selected' : '';
-  return `<div class="rule-item${selClass}" data-name="${rule.name.replace(/'/g,"\\'")}" onclick="selectRule('${rule.name.replace(/'/g,"\\'")}')">
-      <div class="rule-name">${rule.name}</div>
-      <div class="rule-meta">
-        <span class="status-dot ${dotClass}"></span>
-        <span>${rule.platform || rule.source_type}</span>
-        <span style="margin-left:auto">${timeAgoStr}</span>
-      </div>
-    </div>`;
-  }).join('');
+  // Group rules by subject
+  const rulesBySubject = {};
+  for (const rule of rules) {
+    const sub = rule.subject || '（无归属）';
+    if (!rulesBySubject[sub]) rulesBySubject[sub] = [];
+    rulesBySubject[sub].push(rule);
+  }
+
+  // Sort subjects: known subjects first (alphabetical), then '（无归属）' last
+  const subjectOrder = Object.keys(rulesBySubject).sort((a, b) => {
+    if (a === '（无归属）') return 1;
+    if (b === '（无归属）') return -1;
+    return a.localeCompare(b);
+  });
+
+  let html = '';
+  for (const sub of subjectOrder) {
+    const subRules = rulesBySubject[sub].sort((a, b) => {
+      if (a.enabled !== b.enabled) return b.enabled - a.enabled;
+      return (b.last_run_at || '').localeCompare(a.last_run_at || '');
+    });
+    const collapsed = collapsedSubjects.has(sub);
+    const icon = collapsed ? '▸' : '▾';
+    html += `
+      <div class="subject-group">
+        <div class="subject-group-header${collapsed ? ' collapsed' : ''}"
+             onclick="toggleSubject('${sub.replace(/'/g, "\\'")}')">
+          <span class="sg-arrow">${icon}</span>
+          📁 ${sub} <span style="color:var(--text-muted);font-weight:normal">(${subRules.length})</span>
+        </div>
+        <div class="subject-rules${collapsed ? ' collapsed' : ''}">
+          ${subRules.map(rule => renderRuleItem(rule)).join('')}
+        </div>
+      </div>`;
+  }
+
+  container.innerHTML = html;
+}
+
+function renderRuleItem(rule) {
+  const dotClass = rule.enabled
+    ? (rule.last_run_status === 'success' ? 'dot-success'
+       : rule.last_run_status === 'failed'  ? 'dot-failed'
+       : rule.last_run_status === 'running'  ? 'dot-running'
+       : 'dot-pending')
+    : 'dot-disabled';
+  const timeAgoStr = rule.last_run_at ? timeAgo(rule.last_run_at) : '从未运行';
+  const selClass = selectedRule && selectedRule.name === rule.name ? ' selected' : '';
+  // Extract source name from full rule name: "钛媒体 - 数据要素" → "数据要素"
+  const fullName = rule.name || '';
+  const dashIdx = fullName.indexOf(' - ');
+  const sourceName = dashIdx > 0 ? fullName.slice(dashIdx + 3).trim() : fullName;
+  return `<div class="rule-item${selClass}" data-name="${fullName.replace(/'/g,"\\'")}"
+    onclick="selectRule('${fullName.replace(/'/g,"\\'")}')">
+    <div class="rule-name" title="${fullName}">${sourceName}</div>
+    <div class="rule-meta">
+      <span class="status-dot ${dotClass}"></span>
+      <span>${rule.platform || rule.source_type}</span>
+      <span style="margin-left:auto">${timeAgoStr}</span>
+    </div>
+  </div>`;
 }
 
 // ── Select Rule ─────────────────────────────────────────
@@ -670,6 +744,7 @@ function renderRuleDetail(rule) {
       <div class="detail-title">${rule.name}</div>
       ${rule.description ? `<div class="detail-desc">${rule.description}</div>` : ''}
       <div class="detail-tags">
+        ${rule.subject ? `<span class="tag tag-platform">📁 ${rule.subject}</span>` : ''}
         <span class="tag tag-platform">${rule.platform || '—'}</span>
         <span class="tag tag-type">${rule.source_type}</span>
         <span class="tag ${rule.enabled ? 'tag-enabled' : 'tag-disabled'}">${rule.enabled ? '已启用' : '已禁用'}</span>
@@ -770,95 +845,94 @@ async function loadDataFiles() {
   const platformSet = new Set();
   const ruleNameSet = new Set();
 
-  // Build a platform-display-name → rule-name map from state.rules.
-  // Strategy: rule.name = "钛媒体 - 数据要素相关文章" → platform = "钛媒体"
-  //           rule.name = "巨潮资讯 - 数据要素相关公告" → platform = "巨潮资讯"
-  // This covers the display names that appear in item.platform fields.
-  // We also handle state.platform = 'cninfo' (system ID) vs item.platform = '巨潮资讯' (display)
-  // by extracting the prefix from rule.name as the authoritative display name.
+  // Build platform-display-name → rule-name map from state.rules.
   const platformToRuleName = {};
   const ruleNameToPlatform = {};
   for (const rule of Object.values(state.rules || {})) {
     const name = rule.name || '';
-    // Extract display platform from rule name: "钛媒体 - xxx" → "钛媒体"
     const dashIdx = name.indexOf(' - ');
     const displayPlatform = dashIdx > 0 ? name.slice(0, dashIdx).trim() : '';
-    if (name) {
-      if (displayPlatform) {
-        platformToRuleName[displayPlatform] = name;
-        ruleNameToPlatform[name] = displayPlatform;
-      }
-      // Also handle system platform IDs from state (e.g. 'cninfo') → rule name
-      const sysPlatform = rule.platform || '';
-      if (sysPlatform && sysPlatform !== displayPlatform) {
-        platformToRuleName[sysPlatform] = name;
-      }
+    if (displayPlatform) {
+      platformToRuleName[displayPlatform] = name;
+      ruleNameToPlatform[name] = displayPlatform;
+    }
+    const sysPlatform = rule.platform || '';
+    if (sysPlatform && sysPlatform !== displayPlatform) {
+      platformToRuleName[sysPlatform] = name;
     }
   }
 
-  // Load from engine's combined_latest.json (the authoritative merged source)
-  const knownFiles = [
-    '/APP/engine/output/combined_latest.json',
-  ];
-  for (const url of knownFiles) {
+  // Load all subject-level combined_latest.json files.
+  // New structure: output/{subject}/combined_latest.json
+  const subjects = state.subjects || {};
+  const subjectNames = Object.keys(subjects);
+  const candidatePaths = [];
+
+  for (const sub of subjectNames) {
+    candidatePaths.push(`/APP/engine/output/${encodeURIComponent(sub)}/combined_latest.json`);
+  }
+
+  // Fallback: try to find any combined_latest.json by scanning output tree
+  // (for backward compat during migration)
+  candidatePaths.push('/APP/engine/output/combined_latest.json');
+
+  const seenUrls = new Set();
+  for (const url of candidatePaths) {
     try {
       const r = await fetch(url + '?t=' + Date.now());
       if (!r.ok) continue;
       const j = await r.json();
+      const sub = j.meta?.subject || 'unknown';
       for (const item of (j.data || [])) {
-        // Avoid duplicates by URL
-        if (!allData.find(x => x.url === item.url)) {
-          // Determine rule name:
-          // 1. _rule field (new data from execution-based loading below)
-          // 2. _platform field (old buggy data — use platformToRuleName to fill _rule)
-          // 3. platform field → rule name lookup
-          const p = item.platform;
-          if (!item._rule) {
-            item._rule = item._platform
-              ? platformToRuleName[item._platform]
-              : (p && platformToRuleName[p])
-              || (item._rule || 'unknown');
-          }
-          if (item._rule && item._rule !== 'unknown') ruleNameSet.add(item._rule);
-          if (p) platformSet.add(p);
-          allData.push(item);
+        const itemUrl = item.url || '';
+        if (seenUrls.has(itemUrl)) continue;
+        seenUrls.add(itemUrl);
+        if (!item._rule) {
+          item._rule = item._platform
+            ? platformToRuleName[item._platform]
+            : (item.platform && platformToRuleName[item.platform])
+            || (item._rule || 'unknown');
         }
+        // Also tag with subject so we can filter by it
+        if (!item._subject) item._subject = sub;
+        if (item._rule && item._rule !== 'unknown') ruleNameSet.add(item._rule);
+        if (item.platform) platformSet.add(item.platform);
+        allData.push(item);
       }
-    } catch(e2) {}
+    } catch(e) {}
   }
 
-  // Also load individual rule output files referenced in state.executions
-  // (for cases where combined_latest.json hasn't been updated yet)
+  // Also load individual rule output files from state.executions
   for (const exec of (state.executions || [])) {
     if (exec.output_path && exec.output_path.endsWith('.json')) {
       try {
         const r = await fetch(exec.output_path + '?t=' + Date.now());
         if (r.ok) {
           const j = await r.json();
+          const execSub = j.meta?.subject || exec.rule_name;
           for (const item of (j.data || [])) {
-            if (!allData.find(x => x.url === item.url)) {
-              item._rule = exec.rule_name;
-              ruleNameSet.add(exec.rule_name);
-              const p = item.platform;
-              if (p) platformSet.add(p);
-              allData.push(item);
-            }
+            const itemUrl = item.url || '';
+            if (seenUrls.has(itemUrl)) continue;
+            seenUrls.add(itemUrl);
+            item._rule = exec.rule_name;
+            item._subject = execSub;
+            ruleNameSet.add(exec.rule_name);
+            if (item.platform) platformSet.add(item.platform);
+            allData.push(item);
           }
         }
       } catch(e) {}
     }
   }
 
-  // Populate platform filter (from item.platform field — shows actual platform names)
+  // Populate platform filter
   const sel = document.getElementById('filterPlatform');
   sel.innerHTML = '<option value="">全部平台</option>';
   [...platformSet].sort().forEach(p => {
     sel.innerHTML += `<option value="${p}">${p}</option>`;
   });
 
-  // Store rule names globally so renderData can use them
   window._allRuleNames = [...ruleNameSet].sort();
-
   return allData;
 }
 

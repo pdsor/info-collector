@@ -47,16 +47,24 @@ def _engine(state_dir=None):
     )
 
 
+def _all_rule_files(rules_dir: str):
+    """Recursively yield all YAML file paths under rules_dir."""
+    for root, dirs, files in os.walk(rules_dir):
+        for fname in sorted(files):
+            if fname.endswith(".yaml") or fname.endswith(".yml"):
+                yield os.path.join(root, fname)
+
+
 def _rule_path(name: str, rules_dir=None) -> str:
+    """Find rule YAML path by rule name (search recursively)."""
     if rules_dir is None:
         rules_dir = os.path.join(os.path.dirname(__file__), "rules")
-    for fname in os.listdir(rules_dir):
-        if fname.endswith(".yaml") or fname.endswith(".yml"):
-            import yaml
-            with open(os.path.join(rules_dir, fname)) as f:
-                rule = yaml.safe_load(f)
-            if rule and rule.get("name") == name:
-                return os.path.join(rules_dir, fname)
+    import yaml
+    for fpath in _all_rule_files(rules_dir):
+        with open(fpath, encoding="utf-8") as f:
+            rule = yaml.safe_load(f)
+        if rule and rule.get("name") == name:
+            return fpath
     return None
 
 
@@ -66,6 +74,13 @@ def _print_state(state_mgr):
     executions = state_mgr.get_executions(limit=20)
     errors = state_mgr.get_errors(limit=10)
     stats = state_mgr.get_stats()
+    state = state_mgr._state
+    subjects = state.get("subjects", {})
+
+    print("\n═══ 事项概览 ═══")
+    for sub, info in subjects.items():
+        rule_count = len(info.get("rule_names", []))
+        print(f"  📁 {sub} ({rule_count} 条来源)")
 
     print("\n═══ 全局统计 ═══")
     print(f"  总运行次数 : {stats.get('total_runs', 0)}")
@@ -76,8 +91,9 @@ def _print_state(state_mgr):
     for r in rules:
         status_icon = "✅" if r["last_run_status"] == "success" else (
             "❌" if r["last_run_status"] == "failed" else "⏳")
+        sub = r.get("subject", "—")
         print(f"  {status_icon} {r['name']} | {r.get('platform','')} | "
-              f"启用:{r['enabled']} | 最近采集:{r.get('last_collected', 0)}条")
+              f"[{sub}] | 启用:{r['enabled']} | 最近:{r.get('last_collected', 0)}条")
 
     if executions:
         print(f"\n═══ 最近执行 ({len(executions)} 条) ═══")
@@ -129,17 +145,15 @@ def cmd_rules(args):
         sys.exit(1)
     import yaml
     print(f"═══ 规则文件 ({rules_dir}) ═══")
-    for fname in sorted(os.listdir(rules_dir)):
-        if not (fname.endswith(".yaml") or fname.endswith(".yml")):
-            continue
-        fpath = os.path.join(rules_dir, fname)
-        with open(fpath) as f:
+    for fpath in _all_rule_files(rules_dir):
+        with open(fpath, encoding="utf-8") as f:
             rule = yaml.safe_load(f)
         enabled = "✅" if rule.get("enabled", True) else "❌"
-        name = rule.get("name", fname)
+        name = rule.get("name", os.path.basename(fpath))
         platform = rule.get("source", {}).get("platform", "—")
         stype = rule.get("source", {}).get("type", "—")
-        print(f"  {enabled} {name} [{platform}] <{stype}>")
+        subject = rule.get("subject") or rule.get("source", {}).get("subject", "—")
+        print(f"  {enabled} {name} [{platform}|{subject}] <{stype}>")
 
 
 def cmd_state(args):

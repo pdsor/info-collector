@@ -269,15 +269,25 @@ class InfoCollectorEngine:
             }
 
     def run_all(self, rules_dir: str = "./rules") -> list:
-        """Run all enabled rules in the rules directory, return list of results"""
+        """Run all enabled rules in the rules directory (recursively including
+        subject sub-directories), return list of results.
+        """
         results = []
         if not os.path.isdir(rules_dir):
             return results
 
-        for fname in sorted(os.listdir(rules_dir)):
-            if not (fname.endswith(".yaml") or fname.endswith(".yml")):
-                continue
-            fpath = os.path.join(rules_dir, fname)
+        def scan(r_dir):
+            """Recursively collect all YAML file paths."""
+            paths = []
+            for entry in sorted(os.listdir(r_dir)):
+                full = os.path.join(r_dir, entry)
+                if os.path.isdir(full):
+                    paths.extend(scan(full))
+                elif entry.endswith(".yaml") or entry.endswith(".yml"):
+                    paths.append(full)
+            return paths
+
+        for fpath in scan(rules_dir):
             result = self.run(fpath)
             results.append(result)
 

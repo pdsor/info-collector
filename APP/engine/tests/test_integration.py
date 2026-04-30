@@ -29,7 +29,7 @@ class TestEngineIntegration:
 
     def test_load_rule_from_file(self):
         """Test loading actual rule file"""
-        rule = self.engine.load_rule("rules/tmtpost_data_articles.yaml")
+        rule = self.engine.load_rule("rules/数据要素/tmtpost_data_articles.yaml")
         assert rule["name"] == "钛媒体 - 数据要素相关文章"
         assert rule["source"]["type"] == "html"
 
@@ -52,7 +52,7 @@ class TestEngineIntegration:
 
     def test_engine_crawl_html_integration(self):
         """Test crawling actual HTML source with mock"""
-        rule = self.engine.load_rule("rules/tmtpost_data_articles.yaml")
+        rule = self.engine.load_rule("rules/数据要素/tmtpost_data_articles.yaml")
 
         # Mock the HTMLCrawler.fetch to avoid real network call
         fake_html = '''
@@ -71,7 +71,7 @@ class TestEngineIntegration:
 
     def test_engine_crawl_api_integration(self):
         """Test crawling API source with mock"""
-        rule = self.engine.load_rule("rules/cninfo_data_value_search.yaml")
+        rule = self.engine.load_rule("rules/数据要素/cninfo_data_value_search.yaml")
 
         fake_response = {
             "announcements": [
@@ -101,7 +101,8 @@ class TestEngineIntegration:
 
         rule = {
             "name": "Test Rule",
-            "source": {"platform": "test"},
+            "subject": "测试事项",
+            "source": {"platform": "test_platform", "type": "api"},
             "output": {
                 "format": "json",
                 "path": self.temp_output,
@@ -127,10 +128,10 @@ class TestEngineIntegration:
 
         rule = {
             "name": "集成测试规则",
+            "subject": "测试",
             "source": {
                 "platform": "test_platform",
                 "type": "api",
-                "base_url": "https://api.example.com"
             },
             "request": {
                 "method": "GET"

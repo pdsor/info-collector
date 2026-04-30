@@ -71,30 +71,44 @@ firefox /root/info-collector/APP/dashboard/index.html
 
 ```
 info-collector/
+├── rules/                              # 规则按事项分子目录
+│   ├── 数据要素/
+│   │   ├── tmtpost_data_articles.yaml      # subject: "数据要素"
+│   │   └── cninfo_data_value_search.yaml   # subject: "数据要素"
+│   └── 小智LOL选手/
+│       ├── weibo_xiaozhi.yaml              # subject: "小智LOL选手"
+│       └── bilibili_xiaozhi.yaml           # subject: "小智LOL选手"
 ├── APP/
 │   ├── engine/                      # 采集引擎
 │   │   ├── engine_cli.py            # CLI 入口（强制 venv 检查）
 │   │   ├── venv.sh                  # 虚拟环境管理脚本
-│   │   ├── requirements.txt         # 依赖清单
 │   │   ├── dedup.db                 # SQLite 全局去重数据库（自动生成）
 │   │   ├── engine/
 │   │   │   ├── engine.py            # 核心引擎（run / run_all）
-│   │   │   ├── state.py             # 状态管理器（state.json）
+│   │   │   ├── state.py             # 状态管理器（state.json + subjects）
 │   │   │   ├── rule_parser.py       # YAML 规则解析
 │   │   │   ├── dedup.py            # SQLite 全局去重
-│   │   │   ├── output.py            # JSON 输出管理
+│   │   │   ├── output.py            # JSON 输出管理（按 subject 分目录）
 │   │   │   ├── crawl_api.py         # API 采集
 │   │   │   ├── crawl_html.py        # HTML 采集
 │   │   │   └── crawl_browser.py     # 浏览器渲染采集（Playwright）
-│   │   ├── rules/                   # YAML 采集规则
-│   │   ├── output/                  # JSON 输出文件 + state.json
+│   │   ├── rules/                   # YAML 规则（按 subject 分子目录）
+│   │   ├── output/                  # JSON 输出（按 subject 分子目录）
 │   │   └── tests/                   # 单元测试
 │   └── dashboard/
 │       └── index.html               # 数据看板（纯 HTML/CSS/JS）
 ├── DOCS/
 │   └── manual.md                    # 本手册
-└── README.md
+└── clean.sh                         # 测试循环清理脚本
 ```
+
+### 2.1 核心概念：事项（Subject）
+
+**事项**是数据的顶层组织单位。每个 YAML 规则必须声明自己属于哪个事项。
+
+> 场景示例：扫描"小智LOL选手"相关信息 → 事项名 = `小智LOL选手`，下有微博规则、B站规则、新闻规则等多个来源。
+
+**事项命名规范**：使用中文，简洁明确，如 `"数据要素"`、`"小智LOL选手"`、`"某上市公司公告"`。
 
 ---
 
@@ -277,15 +291,16 @@ class InfoCollectorEngine:
 
 | 字段 | 必填 | 说明 | 示例 |
 |------|------|------|------|
-| `name` | ✅ | 规则名称 | `"钛媒体文章采集"` |
+| `name` | ✅ | 规则名称，格式：`平台 - 来源描述` | `"钛媒体 - 数据要素相关文章"` |
+| `subject` | ✅ | **事项归属**，与 rules 子目录名一致 | `"数据要素"` |
 | `version` | | 版本号 | `"1.0.0"` |
 | `description` | | 规则描述 | `"追踪数据行业动态"` |
 | `enabled` | | 是否启用（默认 true） | `false` |
 | `source.platform` | ✅ | 平台标识 | `"tmtpost"` |
 | `source.type` | ✅ | 来源类型 | `"api"` / `"html"` / `"browser"` |
+| `source.subject` | ✅ | **事项归属**（与顶层 subject 保持一致） | `"数据要素"` |
 | `source.url` | 看情况 | HTML/Browser 场景的 URL | `"https://..."` |
 | `source.base_url` | 看情况 | API 场景的 base URL | `"https://..."` |
-| `source.auth.type` | | 认证方式 | `"none"` / `"cookie"` / `"api_key"` / `"oauth"` |
 | `render.enabled` | | 是否启用浏览器渲染 | `true` / `false` |
 | `list.items_path` | ✅ | 数据项提取路径 | 见下方详解 |
 | `list.fields` | ✅ | 字段提取规则 | 见下方详解 |
@@ -349,12 +364,14 @@ items_path: "//a[contains(@class,'item')]"
 
 ```yaml
 name: "巨潮资讯 - 数据要素相关公告"
+subject: "数据要素"              # 必填：事项归属
 version: "1.0.0"
 description: "从巨潮资讯网搜索数据要素相关上市公司公告"
 
 source:
   platform: "cninfo"
   type: "api"
+  subject: "数据要素"            # 与顶层 subject 保持一致
   base_url: "https://www.cninfo.com.cn/new/fulltextSearch/full"
   auth:
     type: "none"
@@ -418,12 +435,14 @@ output:
 
 ```yaml
 name: "钛媒体 - 数据要素相关文章"
+subject: "数据要素"              # 必填：事项归属
 version: "1.0.2"
 description: "从钛媒体官网抓取数据要素相关文章列表"
 
 source:
   platform: "tmtpost"
   type: "html"
+  subject: "数据要素"            # 与顶层 subject 保持一致
   url: "https://www.tmtpost.com/"
   auth:
     type: "none"
@@ -452,20 +471,49 @@ dedup:
 
 output:
   format: "json"
-  path: "./output/tmtpost/"
-  filename_template: "tmtpost_data_articles_{date}.json"
+  # 实际路径：output/{subject}/{platform}/data_{date}.json
+  # 即：output/数据要素/tmtpost/data_{date}.json
+  path: "./output/数据要素/tmtpost/"
+  filename_template: "data_{date}.json"
 ```
 
 ---
 
 ## 7. 数据输出说明
 
-### 7.1 输出 JSON 结构
+### 7.1 输出目录结构
+
+```
+output/                                  # 根目录
+├── state.json                           # 状态记录
+└── {事项A}/
+    ├── combined_latest.json              # 该事项全局汇总
+    ├── {平台1}/
+    │   └── data_20260501.json           # 原始采集数据
+    └── {平台2}/
+        └── data_20260501.json
+```
+
+示例：
+```
+output/
+├── state.json
+└── 数据要素/
+    ├── combined_latest.json
+    ├── tmtpost/
+    │   └── data_20260501.json
+    └── cninfo/
+        └── data_20260501.json
+```
+
+### 7.2 输出 JSON 结构
 
 ```json
 {
   "meta": {
+    "subject": "数据要素",
     "platform": "tmtpost",
+    "rule_name": "钛媒体 - 数据要素相关文章",
     "collected_at": "2024-05-01T12:00:00",
     "count": 12,
     "dedup_filtered": 2
@@ -482,11 +530,6 @@ output:
   ]
 }
 ```
-
-### 7.2 输出路径规则
-
-- 路径由 `output.path` 指定（支持相对路径如 `./output/tmtpost/`）
-- 文件名由 `output.filename_template` 指定，支持 `{date}` 占位符（格式为 `YYYYMMDD`）
 
 ### 7.3 线索类型
 
@@ -512,14 +555,23 @@ output:
 
 ```json
 {
+  "subjects": {
+    "数据要素": {
+      "display_name": "数据要素",
+      "rule_names": [
+        "钛媒体 - 数据要素相关文章",
+        "巨潮资讯 - 数据要素相关公告"
+      ]
+    }
+  },
   "rules": {
     "钛媒体 - 数据要素相关文章": {
       "name": "钛媒体 - 数据要素相关文章",
-      "version": "1.0.2",
+      "subject": "数据要素",
       "platform": "tmtpost",
       "source_type": "html",
       "enabled": true,
-      "rule_path": "./rules/tmtpost_data_articles.yaml",
+      "rule_path": "./rules/数据要素/tmtpost_data_articles.yaml",
       "last_run_at": "2026-04-30T12:00:00",
       "last_run_status": "success",
       "last_collected": 13,
@@ -539,27 +591,21 @@ output:
       "duration_sec": 5.2,
       "collected": 13,
       "dedup_filtered": 0,
-      "output_path": "./output/tmtpost/tmtpost_data_articles_20260430.json"
+      "output_path": "/APP/engine/output/数据要素/tmtpost/data_20260430.json"
     }
   ],
-  "errors": [
-    {
-      "rule_name": "巨潮资讯 - 数据要素相关公告",
-      "error": "NetworkError: timeout",
-      "occurred_at": "2026-04-30T11:00:00"
-    }
-  ],
+  "errors": [],
   "stats": {
     "total_collected": 62,
     "total_runs": 5,
-    "total_failed": 1
+    "total_failed": 0
   }
 }
 ```
 
 ### 8.3 自动注册规则
 
-运行 `./venv.sh run python engine_cli.py scan` 会扫描 `rules/` 目录，自动将所有 YAML 规则注册到 `state.json`，无需手动管理。
+运行 `./venv.sh run python engine_cli.py scan` 会扫描 `rules/` 目录（含子目录），自动将所有 YAML 规则注册到 `state.json`，无需手动管理。
 
 ---
 

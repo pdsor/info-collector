@@ -12,7 +12,7 @@ class TestRuleParser:
         from engine.rule_parser import RuleParser
         
         parser = RuleParser()
-        rule = parser.load_rule("rules/cninfo_data_value_search.yaml")
+        rule = parser.load_rule("rules/数据要素/cninfo_data_value_search.yaml")
         
         assert rule is not None
         assert "name" in rule
@@ -24,7 +24,7 @@ class TestRuleParser:
         from engine.rule_parser import RuleParser
         
         parser = RuleParser()
-        rule = parser.load_rule("rules/tmtpost_data_articles.yaml")
+        rule = parser.load_rule("rules/数据要素/tmtpost_data_articles.yaml")
         
         assert rule is not None
         assert rule["source"]["type"] == "html"
@@ -45,7 +45,7 @@ class TestRuleParser:
         from engine.rule_parser import RuleParser
         
         parser = RuleParser()
-        rule = parser.load_rule("rules/cninfo_data_value_search.yaml")
+        rule = parser.load_rule("rules/数据要素/cninfo_data_value_search.yaml")
         
         items_path = rule["list"]["items_path"]
         assert items_path == "$.announcements[*]"
@@ -55,7 +55,7 @@ class TestRuleParser:
         from engine.rule_parser import RuleParser
 
         parser = RuleParser()
-        rule = parser.load_rule("rules/tmtpost_data_articles.yaml")
+        rule = parser.load_rule("rules/数据要素/tmtpost_data_articles.yaml")
 
         items_path = rule["list"]["items_path"]
         # tmtpost uses regex mode now
@@ -66,7 +66,7 @@ class TestRuleParser:
         from engine.rule_parser import RuleParser
         
         parser = RuleParser()
-        rule = parser.load_rule("rules/cninfo_data_value_search.yaml")
+        rule = parser.load_rule("rules/数据要素/cninfo_data_value_search.yaml")
         
         fields = rule["list"]["fields"]
         assert len(fields) > 0

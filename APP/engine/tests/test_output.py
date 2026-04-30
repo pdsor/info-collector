@@ -28,9 +28,11 @@ class TestOutputManager:
             {"title": "Test 1", "url": "https://example.com/1"},
             {"title": "Test 2", "url": "https://example.com/2"},
         ]
-        
+
         rule = {
             "name": "Test Rule",
+            "subject": "测试事项",
+            "source": {"platform": "test_platform"},
             "output": {
                 "format": "json",
                 "filename_template": "test_{date}.json"
@@ -51,9 +53,11 @@ class TestOutputManager:
     def test_output_includes_meta(self):
         """Test that output includes metadata"""
         items = [{"title": "Test"}]
-        
+
         rule = {
             "name": "Test Rule",
+            "subject": "测试事项",
+            "source": {"platform": "test_platform"},
             "output": {
                 "format": "json",
                 "filename_template": "test_{date}.json"
@@ -72,9 +76,11 @@ class TestOutputManager:
     def test_output_with_dedup_info(self):
         """Test output includes deduplication info"""
         items = [{"title": "Test"}]
-        
+
         rule = {
             "name": "Test Rule",
+            "subject": "测试事项",
+            "source": {"platform": "test_platform"},
             "output": {
                 "format": "json",
                 "filename_template": "test_{date}.json"
@@ -91,10 +97,12 @@ class TestOutputManager:
     def test_create_output_directory(self):
         """Test that output directory is created if not exists"""
         custom_path = os.path.join(self.temp_dir, "subdir", "output")
-        
+
         items = [{"title": "Test"}]
         rule = {
             "name": "Test",
+            "subject": "测试事项",
+            "source": {"platform": "test_platform"},
             "output": {
                 "format": "json",
                 "path": custom_path,
