@@ -1,14 +1,26 @@
 """
 Cron API — 定时任务管理
 """
+import os
 import sqlite3
 import json
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from datetime import datetime
 
 cron_bp = Blueprint("cron", __name__)
 
-DB_PATH = "APP/dashboard/dashboard.db"
+_DASHBOARD_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "dashboard"
+)
+DB_PATH = os.path.join(_DASHBOARD_DIR, "dashboard.db")
+_scheduler = None
+
+
+def set_scheduler(scheduler):
+    """由 server.py 在注册蓝图前调用，注入 scheduler 实例"""
+    global _scheduler
+    _scheduler = scheduler
 
 
 def get_db():
@@ -19,7 +31,6 @@ def get_db():
 
 def load_crons_from_db():
     """启动时从 DB 加载 cron 配置到 APScheduler"""
-    from flask import current_app
     conn = get_db()
     cur = conn.cursor()
     cur.execute("SELECT * FROM cron_jobs WHERE enabled = 1")
@@ -31,8 +42,8 @@ def load_crons_from_db():
 
 def _add_scheduler_job(job_row):
     """将单个 cron job 添加到调度器"""
-    from flask import current_app
-    scheduler = current_app.extensions.get("scheduler")
+    global _scheduler
+    scheduler = _scheduler
     if not scheduler:
         return
     job_id = f"cron_{job_row['id']}"
@@ -53,18 +64,18 @@ def _add_scheduler_job(job_row):
     except Exception:
         pass
 
-    # 添加新的
+    # 添加新的 — APScheduler cron trigger 直接接受字符串 "*" 或整数
+    # 注意: id 是 add_job 的参数，不是 CronTrigger 的
     scheduler.add_job(
         _run_cron,
         "cron",
-        job_id=job_id,
-        second=int(job_row.get("second", 0) or 0),
-        minute=int(job_row.get("minute", 0) or 0),
-        hour=int(job_row.get("hour", 0) or 0),
-        day=int(job_row.get("day", 0) or 0),
-        month=int(job_row.get("month", 0) or 0),
-        day_of_week=job_row.get("day_of_week", "*"),
         id=job_id,
+        second=str(job_row.get("second", "0")),
+        minute=str(job_row.get("minute", "*")),
+        hour=str(job_row.get("hour", "*")),
+        day=str(job_row.get("day", "*")),
+        month=str(job_row.get("month", "*")),
+        day_of_week=str(job_row.get("day_of_week", "*")),
         replace_existing=True,
     )
 
@@ -113,7 +124,6 @@ def create_cron():
 
     # 如果启用，立即添加到调度器
     if enabled:
-        from flask import current_app
         conn2 = get_db()
         cur2 = conn2.cursor()
         cur2.execute("SELECT * FROM cron_jobs WHERE id = ?", (job_id,))
@@ -177,8 +187,8 @@ def update_cron(cron_id):
     conn.close()
 
     # 重新注册调度器
-    from flask import current_app
-    scheduler = current_app.extensions.get("scheduler")
+    global _scheduler
+    scheduler = _scheduler
     if scheduler:
         try:
             scheduler.remove_job(f"cron_{cron_id}")
@@ -198,8 +208,8 @@ def update_cron(cron_id):
 @cron_bp.route("/<int:cron_id>", methods=["DELETE"])
 def delete_cron(cron_id):
     """DELETE /api/cron/<id>"""
-    from flask import current_app
-    scheduler = current_app.extensions.get("scheduler")
+    global _scheduler
+    scheduler = _scheduler
     if scheduler:
         try:
             scheduler.remove_job(f"cron_{cron_id}")
@@ -226,8 +236,8 @@ def toggle_cron(cron_id):
     conn.commit()
     conn.close()
 
-    from flask import current_app
-    scheduler = current_app.extensions.get("scheduler")
+    global _scheduler
+    scheduler = _scheduler
     if scheduler:
         job_id = f"cron_{cron_id}"
         try:
