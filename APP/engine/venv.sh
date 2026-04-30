@@ -112,8 +112,8 @@ usage() {
 
 快速开始:
   1. ./venv.sh create   # 首次运行，创建虚拟环境 + 安装依赖
-  2. ./venv.sh run python engine_cli.py --help   # 查看可用命令
-  3. ./venv.sh run python engine_cli.py --run-all  # 执行全部规则
+  2. ./venv.sh run python engine_cli.py run-all    # 执行全部规则
+  3. ./venv.sh run python engine_cli.py state      # 查看采集状态
 
 激活虚拟环境（手动）:
   source .venv/bin/activate
@@ -147,7 +147,7 @@ case "$COMMAND" in
             echo
             info "运行示例:"
             echo "  ./venv.sh run python -c 'print(1+1)'"
-            echo "  ./venv.sh run python engine_cli.py --run-all"
+            echo "  ./venv.sh run python engine_cli.py run-all"
         else
             info "虚拟环境未创建。"
             echo "  ./venv.sh create   # 创建虚拟环境"

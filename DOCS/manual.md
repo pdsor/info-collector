@@ -26,7 +26,9 @@
 | 内存 | ≥ 4GB（启用浏览器渲染时建议 8GB） |
 | 网络 | 可访问外网 |
 
-### 1.2 一步启动
+### 1.2 启动方式
+
+**方式一：未激活虚拟环境（推荐，始终有效）**
 
 ```bash
 cd /root/info-collector/APP/engine
@@ -34,15 +36,27 @@ cd /root/info-collector/APP/engine
 # 首次：创建虚拟环境 + 安装依赖
 ./venv.sh create
 
-# 查看所有可用命令
-./venv.sh run python engine_cli.py --help
-
 # 执行全部规则
 ./venv.sh run python engine_cli.py run-all
 
 # 查看采集状态
 ./venv.sh run python engine_cli.py state
 ```
+
+**方式二：已激活虚拟环境（直接运行，无需 venv.sh）**
+
+```bash
+# 激活虚拟环境
+source .venv/bin/activate
+
+# 执行全部规则（直接调用，不走 venv.sh）
+python engine_cli.py run-all
+
+# 查看采集状态
+python engine_cli.py state
+```
+
+> **注意**：`venv.sh` 脚本位于 `APP/engine/` 目录下，不是项目根目录。
 
 ### 1.3 打开看板
 
@@ -492,7 +506,7 @@ output:
 
 ### 8.1 状态文件位置
 
-`output/state.json`，由 `StateManager` 自动维护。
+`APP/engine/output/state.json`，由 `StateManager` 自动维护。
 
 ### 8.2 状态文件结构
 
@@ -658,13 +672,33 @@ cat /root/info-collector/APP/engine/output/state.json | python3 -m json.tool
 - API 密钥等凭证不要写在 YAML 规则中，建议写入 `credentials.yaml` 并在 `.gitignore` 中忽略
 - 不要将 `dedup.db` 和 `output/` 目录提交到 Git
 
-### 11.3 清理数据
+### 11.3 测试循环（清理 → 采集 → 看板）
+
+完整测试循环如下：
 
 ```bash
-# 清空去重记录（重新全量采集）
-rm /root/info-collector/APP/engine/dedup.db
+cd /root/info-collector
 
-# 清空所有输出和状态（谨慎操作）
-rm -rf /root/info-collector/APP/engine/output/*.json
-rm -rf /root/info-collector/APP/engine/output/*/
+# 1. 清理运行产物
+./clean.sh
+
+# 2. 执行采集（未激活 venv 时）
+cd APP/engine && ./venv.sh run python engine_cli.py run-all
+
+# 或（已激活 venv 时）
+cd APP/engine && python engine_cli.py run-all
+
+# 3. 启动看板（新终端窗口）
+cd /root/info-collector && python3 -m http.server 8080
+
+# 4. 浏览器打开
+# http://localhost:8080/APP/dashboard/index.html
 ```
+
+`clean.sh` 清理内容：
+- `APP/engine/output/*/data_*.json` — 各规则原始采集数据
+- `APP/engine/output/combined_*.json` — 合并汇总文件
+- `APP/engine/output/state.json` — 运行状态记录
+- `APP/engine/dedup.db` — 全局去重数据库
+
+> **注意**：运行产物路径均相对于 `APP/engine/` 目录。
