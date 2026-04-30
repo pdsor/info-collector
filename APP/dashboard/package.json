@@ -1,0 +1,20 @@
+{
+  "name": "info-collector-dashboard",
+  "version": "1.0.0",
+  "description": "数据采集看板 - Node.js 服务",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server/index.js",
+    "dev": "node --watch src/server/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "vitest": "^1.4.0",
+    "@playwright/test": "^1.42.0"
+  }
+}
