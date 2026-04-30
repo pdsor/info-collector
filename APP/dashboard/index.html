@@ -592,7 +592,7 @@ function renderRulesList() {
       : 'dot-disabled';
     const timeAgoStr = rule.last_run_at ? timeAgo(rule.last_run_at) : '从未运行';
     const selClass = selectedRule && selectedRule.name === rule.name ? ' selected' : '';
-  return `<div class="rule-item${selClass}" onclick="selectRule('${rule.name.replace(/'/g,"\\'")}')">
+  return `<div class="rule-item${selClass}" data-name="${rule.name.replace(/'/g,"\\'")}" onclick="selectRule('${rule.name.replace(/'/g,"\\'")}')">
       <div class="rule-name">${rule.name}</div>
       <div class="rule-meta">
         <span class="status-dot ${dotClass}"></span>
@@ -609,9 +609,8 @@ function selectRule(name) {
   selectedRule = rules.find(r => r.name === name) || null;
   document.querySelectorAll('.rule-item').forEach(el => el.classList.remove('selected'));
   if (selectedRule) {
-    const els = document.querySelectorAll('.rule-item');
-    const idx = rules.indexOf(selectedRule);
-    if (els[idx]) els[idx].classList.add('selected');
+    const el = document.querySelector(`.rule-item[data-name='${name.replace(/'/g, "\\'")}']`);
+    if (el) el.classList.add('selected');
   }
   switchTab('overview');
 }

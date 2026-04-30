@@ -7,11 +7,11 @@ InfoCollector Engine CLI
 
 用法:
   python3 engine_cli.py --help
-  python3 engine_cli.py --run-all
-  python3 engine_cli.py --run <rule_name>
-  python3 engine_cli.py --rules
-  python3 engine_cli.py --state
-  python3 engine_cli.py --scan
+  python3 engine_cli.py run-all
+  python3 engine_cli.py run <rule_name>
+  python3 engine_cli.py rules
+  python3 engine_cli.py state
+  python3 engine_cli.py scan
 """
 
 import sys

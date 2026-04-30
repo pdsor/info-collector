@@ -38,10 +38,10 @@ cd /root/info-collector/APP/engine
 ./venv.sh run python engine_cli.py --help
 
 # 执行全部规则
-./venv.sh run python engine_cli.py --run-all
+./venv.sh run python engine_cli.py run-all
 
 # 查看采集状态
-./venv.sh run python engine_cli.py --state
+./venv.sh run python engine_cli.py state
 ```
 
 ### 1.3 打开看板
