@@ -374,9 +374,9 @@
   <span style="font-size:16px;">⚠️</span>
   <span>
     看板通过 <code>file://</code> 协议打开，无法加载数据（浏览器 CORS 限制）。
-    请通过 HTTP 服务访问，或在项目根目录运行：
-    <code style="background:#7f1d1d; color:#fca5a5;">cd /root/info-collector/APP/dashboard && python3 -m http.server 8080</code>
-    然后访问 <a href="http://localhost:8080" style="color:#93c5fd;">http://localhost:8080</a>
+    请通过 HTTP 服务访问：
+    <code style="background:#7f1d1d; color:#fca5a5;">cd /root/info-collector && python3 -m http.server 8080</code>
+    然后访问 <a href="http://localhost:8080/APP/dashboard/index.html" style="color:#93c5fd;">http://localhost:8080/APP/dashboard/index.html</a>
   </span>
 </div>
 
@@ -500,9 +500,15 @@
 </div>
 
 <script>
-// ── Config ──────────────────────────────────────────────
-const STATE_FILE = '../engine/output/state.json';
-const DATA_DIR   = '../engine/output/';
+// ── Path Resolution ────────────────────────────────────────
+// HTTP server serves from project root (/) or APP/dashboard/ subdir.
+// All paths here are absolute (start with /) so they are NOT relative
+// to the HTML file — they resolve from the HTTP server root directly.
+// Serve command:
+//   cd /root/info-collector && python3 -m http.server 8080
+// Then access: http://localhost:8080/APP/dashboard/index.html
+const STATE_FILE = '/APP/engine/output/state.json';
+const DATA_DIR   = '/APP/engine/output/';
 
 // Detect if running under file:// protocol (CORS-blocked)
 const isFileProtocol = window.location.protocol === 'file:';
@@ -771,32 +777,25 @@ async function loadDataFiles() {
     }
   }
 
-  // Also scan output dir for JSON files
-  try {
-    const dirRes = await fetch(DATA_DIR + '?t=' + Date.now());
-    if (dirRes.ok) {
-      const text = await dirRes.text();
-      const files = [...text.matchAll(/href="([^"]+\.json)"/g)]
-        .map(m => m[1])
-        .filter(f => !f.includes('state.json') && !f.includes('combined'));
-
-      for (const file of files.slice(0, 20)) {
-        try {
-          const r = await fetch(DATA_DIR + file + '?t=' + Date.now());
-          if (!r.ok) continue;
-          const j = await r.json();
-          for (const item of (j.data || [])) {
-            if (!allData.find(x => x.url === item.url)) {
-              item._rule = file;
-              item._collected_at = j.meta?.collected_at;
-              if (item.platform) platformSet.add(item.platform);
-              allData.push(item);
-            }
-          }
-        } catch(e2) {}
+  // Load from engine's combined_latest.json (written by OutputManager)
+  const knownFiles = [
+    '../engine/output/combined_latest.json',
+  ];
+  for (const url of knownFiles) {
+    try {
+      const r = await fetch(url + '?t=' + Date.now());
+      if (!r.ok) continue;
+      const j = await r.json();
+      for (const item of (j.data || [])) {
+        if (!allData.find(x => x.url === item.url)) {
+          item._rule = url.split('/')[3] || 'combined';
+          item._collected_at = j.meta?.collected_at;
+          if (item.platform) platformSet.add(item.platform);
+          allData.push(item);
+        }
       }
-    }
-  } catch(e) {}
+    } catch(e2) {}
+  }
 
   // Populate platform filter
   const sel = document.getElementById('filterPlatform');

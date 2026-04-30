@@ -558,11 +558,11 @@ output:
 正确方式是起一个 HTTP 服务：
 
 ```bash
-cd /root/info-collector/APP/dashboard
+cd /root/info-collector
 python3 -m http.server 8080
 ```
 
-然后用浏览器访问 **http://localhost:8080**。
+然后用浏览器访问 **http://localhost:8080/APP/dashboard/index.html**。
 
 ### 9.2 功能说明
 
