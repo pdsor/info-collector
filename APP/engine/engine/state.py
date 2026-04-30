@@ -119,6 +119,29 @@ class StateManager:
         self._save()
         return execution_id
 
+    def _resolve_http_path(self, output_path: str) -> str:
+        """将本地 output_path 转为 HTTP 可访问的绝对路径。
+
+        engine CWD 可能是项目根 /root/info-collector/ 或 APP/engine/ 目录，
+        但 HTTP 服务根固定在项目根 /root/info-collector/。
+        """
+        if not output_path:
+            return output_path
+        # 统一转为绝对路径（基于 state_dir）
+        if not os.path.isabs(output_path):
+            abs_path = os.path.abspath(os.path.join(self.state_dir, '..', output_path.lstrip('./')))
+        else:
+            abs_path = output_path
+        # 对于绝对路径（如 /tmp/...），计算相对于项目根的路径
+        try:
+            rel = os.path.relpath(abs_path, '/root/info-collector')
+            # 去掉 ../ 前缀，转为 HTTP 绝对路径
+            while rel.startswith('../'):
+                rel = rel[3:]
+            return '/' + rel if rel != '.' else '/'
+        except ValueError:
+            return output_path
+
     def record_finish(self, execution_id: str, rule_name: str,
                       collected: int, dedup_filtered: int,
                       output_path: str, error: str = None):
@@ -135,7 +158,7 @@ class StateManager:
                 exec_entry["collected"] = collected
                 exec_entry["dedup_filtered"] = dedup_filtered
                 exec_entry["error"] = error
-                exec_entry["output_path"] = output_path
+                exec_entry["output_path"] = self._resolve_http_path(output_path)
                 break
 
         # 更新规则统计
