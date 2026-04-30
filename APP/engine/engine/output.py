@@ -49,22 +49,31 @@ class OutputManager:
 
         return output_path
 
-    def _update_combined_latest(self, source_dir: str, platform: str):
-        """Collect all date-stamped JSON files for this platform and write combined_latest.json"""
+    def _update_combined_latest(self, _source_dir: str = None, _platform: str = None):
+        """Collect ALL date-stamped JSON files from ALL platform sub-dirs and write combined_latest.json.
+
+        Args are ignored (kept for backwards compat) — we now scan the entire output tree.
+        """
         combined_path = os.path.join(self.base_path, "combined_latest.json")
 
-        # Find all date-stamped JSON files in the source directory
-        pattern = os.path.join(source_dir, "*.json")
-        files = sorted(glob.glob(pattern), key=os.path.getmtime, reverse=True)
+        # Scan ALL subdirectories under base_path for date-stamped JSON files
+        all_files = []
+        for root, dirs, files in os.walk(self.base_path):
+            for fname in files:
+                if fname.startswith(".") or fname == "combined_latest.json":
+                    continue
+                if fname.endswith(".json"):
+                    all_files.append(os.path.join(root, fname))
+
+        # Sort newest first; keep most recent 200 files to avoid OOM on huge runs
+        all_files.sort(key=os.path.getmtime, reverse=True)
+        all_files = all_files[:200]
 
         all_items = []
         seen_urls = set()
         latest_at = None
 
-        for fpath in files[:30]:  # last 30 runs max
-            fname = os.path.basename(fpath)
-            if fname == "combined_latest.json":
-                continue
+        for fpath in all_files:
             try:
                 with open(fpath, encoding='utf-8') as f:
                     data = json.load(f)
@@ -72,9 +81,7 @@ class OutputManager:
                     url = item.get("url", "")
                     if url and url not in seen_urls:
                         seen_urls.add(url)
-                        item["_platform"] = platform
                         all_items.append(item)
-                # Track most recent collection time
                 meta_at = data.get("meta", {}).get("collected_at")
                 if meta_at and (latest_at is None or meta_at > latest_at):
                     latest_at = meta_at

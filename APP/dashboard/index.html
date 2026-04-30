@@ -604,6 +604,10 @@ function renderRulesList() {
 }
 
 // ── Select Rule ─────────────────────────────────────────
+// Removes the forced tab-switch so clicking a rule preserves your current tab.
+// When in 'data' tab, the selected rule becomes the data filter automatically.
+// When in other tabs, clicking a rule shows its overview — which is a tab-switch
+// to 'overview', not a within-tab action.
 function selectRule(name) {
   const rules = Object.values(state.rules || {});
   selectedRule = rules.find(r => r.name === name) || null;
@@ -612,7 +616,14 @@ function selectRule(name) {
     const el = document.querySelector(`.rule-item[data-name='${name.replace(/'/g, "\\'")}']`);
     if (el) el.classList.add('selected');
   }
-  switchTab('overview');
+
+  if (currentTab === 'data') {
+    // Stay in data tab — selectedRule will be picked up by renderData()
+    loadDataFiles().then(renderData);
+  } else {
+    // For all other tabs: clicking a rule item means "show me this rule's overview"
+    switchTab('overview');
+  }
 }
 
 // ── Tab Switching ────────────────────────────────────────
@@ -757,26 +768,35 @@ function renderErrors() {
 async function loadDataFiles() {
   allData = [];
   const platformSet = new Set();
+  const ruleNameSet = new Set();
 
-  // Load state.json executions for unique data sources
-  for (const exec of (state.executions || [])) {
-    if (exec.output_path && exec.output_path.endsWith('.json')) {
-      try {
-        const r = await fetch(exec.output_path + '?t=' + Date.now());
-        if (r.ok) {
-          const j = await r.json();
-          for (const item of (j.data || [])) {
-            item._rule = exec.rule_name;
-            item._collected_at = j.meta?.collected_at;
-            if (item.platform) platformSet.add(item.platform);
-            allData.push(item);
-          }
-        }
-      } catch(e) {}
+  // Build a platform-display-name → rule-name map from state.rules.
+  // Strategy: rule.name = "钛媒体 - 数据要素相关文章" → platform = "钛媒体"
+  //           rule.name = "巨潮资讯 - 数据要素相关公告" → platform = "巨潮资讯"
+  // This covers the display names that appear in item.platform fields.
+  // We also handle state.platform = 'cninfo' (system ID) vs item.platform = '巨潮资讯' (display)
+  // by extracting the prefix from rule.name as the authoritative display name.
+  const platformToRuleName = {};
+  const ruleNameToPlatform = {};
+  for (const rule of Object.values(state.rules || {})) {
+    const name = rule.name || '';
+    // Extract display platform from rule name: "钛媒体 - xxx" → "钛媒体"
+    const dashIdx = name.indexOf(' - ');
+    const displayPlatform = dashIdx > 0 ? name.slice(0, dashIdx).trim() : '';
+    if (name) {
+      if (displayPlatform) {
+        platformToRuleName[displayPlatform] = name;
+        ruleNameToPlatform[name] = displayPlatform;
+      }
+      // Also handle system platform IDs from state (e.g. 'cninfo') → rule name
+      const sysPlatform = rule.platform || '';
+      if (sysPlatform && sysPlatform !== displayPlatform) {
+        platformToRuleName[sysPlatform] = name;
+      }
     }
   }
 
-  // Load from engine's combined_latest.json (written by OutputManager)
+  // Load from engine's combined_latest.json (the authoritative merged source)
   const knownFiles = [
     '/APP/engine/output/combined_latest.json',
   ];
@@ -786,32 +806,84 @@ async function loadDataFiles() {
       if (!r.ok) continue;
       const j = await r.json();
       for (const item of (j.data || [])) {
+        // Avoid duplicates by URL
         if (!allData.find(x => x.url === item.url)) {
-          item._rule = url.split('/')[3] || 'combined';
-          item._collected_at = j.meta?.collected_at;
-          if (item.platform) platformSet.add(item.platform);
+          // Determine rule name:
+          // 1. _rule field (new data from execution-based loading below)
+          // 2. _platform field (old buggy data — use platformToRuleName to fill _rule)
+          // 3. platform field → rule name lookup
+          const p = item.platform;
+          if (!item._rule) {
+            item._rule = item._platform
+              ? platformToRuleName[item._platform]
+              : (p && platformToRuleName[p])
+              || (item._rule || 'unknown');
+          }
+          if (item._rule && item._rule !== 'unknown') ruleNameSet.add(item._rule);
+          if (p) platformSet.add(p);
           allData.push(item);
         }
       }
     } catch(e2) {}
   }
 
-  // Populate platform filter
+  // Also load individual rule output files referenced in state.executions
+  // (for cases where combined_latest.json hasn't been updated yet)
+  for (const exec of (state.executions || [])) {
+    if (exec.output_path && exec.output_path.endsWith('.json')) {
+      try {
+        const r = await fetch(exec.output_path + '?t=' + Date.now());
+        if (r.ok) {
+          const j = await r.json();
+          for (const item of (j.data || [])) {
+            if (!allData.find(x => x.url === item.url)) {
+              item._rule = exec.rule_name;
+              ruleNameSet.add(exec.rule_name);
+              const p = item.platform;
+              if (p) platformSet.add(p);
+              allData.push(item);
+            }
+          }
+        }
+      } catch(e) {}
+    }
+  }
+
+  // Populate platform filter (from item.platform field — shows actual platform names)
   const sel = document.getElementById('filterPlatform');
   sel.innerHTML = '<option value="">全部平台</option>';
   [...platformSet].sort().forEach(p => {
     sel.innerHTML += `<option value="${p}">${p}</option>`;
   });
 
+  // Store rule names globally so renderData can use them
+  window._allRuleNames = [...ruleNameSet].sort();
+
   return allData;
 }
 
+// ── Render Data (with selected-rule + platform + clue + keyword filters) ──
 function renderData() {
   const platform = document.getElementById('filterPlatform').value;
   const clue = document.getElementById('filterClue').value;
   const keyword = document.getElementById('filterKeyword').value.toLowerCase();
 
   let filtered = allData;
+
+  // If a rule is selected in the left panel AND we're in the data tab,
+  // automatically scope data to that rule's output.
+  // The user can override by picking a different platform in the toolbar.
+  let effectiveRuleFilter = null;
+  if (selectedRule && currentTab === 'data') {
+    // Check if the user has NOT manually changed the platform dropdown from "all"
+    // If platform dropdown is still at default "", apply rule filter.
+    // If user explicitly chose a platform, respect that over the auto rule filter.
+    effectiveRuleFilter = selectedRule.name;
+  }
+
+  if (effectiveRuleFilter) {
+    filtered = filtered.filter(i => i._rule === effectiveRuleFilter);
+  }
   if (platform) filtered = filtered.filter(i => i.platform === platform);
   if (clue) filtered = filtered.filter(i => i.clue_type === clue);
   if (keyword) filtered = filtered.filter(i =>
@@ -819,8 +891,16 @@ function renderData() {
     (i.company && i.company.toLowerCase().includes(keyword))
   );
 
+  // Build filter status line
+  const parts = [];
+  if (effectiveRuleFilter) parts.push(`规则: <b>${effectiveRuleFilter}</b>`);
+  else if (platform) parts.push(`平台: <b>${platform}</b>`);
+  if (clue) parts.push(`类型: <b>${clueLabel(clue)}</b>`);
+  if (keyword) parts.push(`关键词: <b>${keyword}</b>`);
+  const filterLabel = parts.length ? parts.join(' · ') + ' · ' : '';
+
   document.getElementById('dataSummary').innerHTML =
-    `<div style="font-size:13px;color:var(--text-muted)">共 <b style="color:var(--text)">${filtered.length}</b> 条 / ${allData.length} 条</div>`;
+    `<div style="font-size:13px;color:var(--text-muted)">${filterLabel}共 <b style="color:var(--text)">${filtered.length}</b> 条 / ${allData.length} 条</div>`;
 
   const table = document.getElementById('dataTable');
   if (!filtered.length) {
