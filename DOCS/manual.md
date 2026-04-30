@@ -553,15 +553,16 @@ output:
 
 ### 9.1 启动
 
-```bash
-# 直接用浏览器打开（无需 HTTP 服务）
-firefox /root/info-collector/APP/dashboard/index.html
+> ⚠️ **不要直接双击打开 `index.html`**。浏览器通过 `file://` 协议打开时无法加载数据（受 CORS 安全策略限制），会导致看板白屏。
 
-# 或起一个简单的 HTTP 服务
+正确方式是起一个 HTTP 服务：
+
+```bash
 cd /root/info-collector/APP/dashboard
 python3 -m http.server 8080
-# 然后访问 http://localhost:8080
 ```
+
+然后用浏览器访问 **http://localhost:8080**。
 
 ### 9.2 功能说明
 

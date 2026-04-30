@@ -369,6 +369,17 @@
 </head>
 <body>
 
+<!-- File protocol CORS warning -->
+<div id="fileProtocolWarning" style="display:none; background:#7f1d1d; border-bottom:1px solid #b91c1c; padding:10px 20px; font-size:13px; color:#fecaca; align-items:center; gap:10px;">
+  <span style="font-size:16px;">⚠️</span>
+  <span>
+    看板通过 <code>file://</code> 协议打开，无法加载数据（浏览器 CORS 限制）。
+    请通过 HTTP 服务访问，或在项目根目录运行：
+    <code style="background:#7f1d1d; color:#fca5a5;">cd /root/info-collector/APP/dashboard && python3 -m http.server 8080</code>
+    然后访问 <a href="http://localhost:8080" style="color:#93c5fd;">http://localhost:8080</a>
+  </span>
+</div>
+
 <header>
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3182ce" stroke-width="2">
     <circle cx="12" cy="12" r="10"/>
@@ -493,6 +504,9 @@
 const STATE_FILE = '../engine/output/state.json';
 const DATA_DIR   = '../engine/output/';
 
+// Detect if running under file:// protocol (CORS-blocked)
+const isFileProtocol = window.location.protocol === 'file:';
+
 // ── State ──────────────────────────────────────────────
 let state = null;
 let currentTab = 'overview';
@@ -509,6 +523,9 @@ async function loadState() {
     renderRulesList();
     renderCurrentTab();
     document.getElementById('lastUpdated').textContent = '更新: ' + new Date().toLocaleTimeString('zh-CN');
+    // Hide file:// warning if load succeeded
+    const warn = document.getElementById('fileProtocolWarning');
+    if (warn) warn.style.display = 'none';
   } catch(e) {
     console.error('loadState failed:', e);
     document.getElementById('lastUpdated').textContent = '加载失败: ' + e.message;
@@ -518,10 +535,16 @@ async function loadState() {
 async function refreshAll() {
   if (!confirm('确认执行全部规则？')) return;
   document.getElementById('lastUpdated').textContent = '执行中...';
-  // Call engine run_all via HTTP (requires backend) or just refresh state
-  // For now, just reload
   await loadState();
 }
+
+// ── File protocol check on load ──────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  if (isFileProtocol) {
+    const warn = document.getElementById('fileProtocolWarning');
+    if (warn) warn.style.display = 'flex';
+  }
+});
 
 // ── Render Stats ────────────────────────────────────────
 function renderStats() {
