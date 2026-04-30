@@ -12,6 +12,7 @@ sqlalchemy>=2.0.0
 # Utils
 python-dateutil>=2.8.0
 tqdm>=4.65.0
+click>=8.0.0
 
 # Testing
 pytest>=7.4.0
