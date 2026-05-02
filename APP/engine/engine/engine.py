@@ -13,7 +13,7 @@ from .state import StateManager
 class InfoCollectorEngine:
     """Main engine for info collection"""
 
-    def __init__(self, dedup_db_path: str = "./dedup.db", state_dir: str = "./output"):
+    def __init__(self, dedup_db_path: str = "./dedup.db", state_dir: str = "engine/data"):
         """Initialize the engine
 
         Args:
@@ -22,7 +22,7 @@ class InfoCollectorEngine:
         """
         self.parser = RuleParser()
         self.dedup = Deduplicator(dedup_db_path)
-        self.output_mgr = OutputManager()
+        self.output_mgr = OutputManager(base_path=state_dir)
         self.state_mgr = StateManager(state_dir)
         self.api_crawler = APICrawler()
         self.html_crawler = HTMLCrawler()

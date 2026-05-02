@@ -9,11 +9,11 @@ from pathlib import Path
 class OutputManager:
     """Manage JSON output under output/{subject}/{platform}/ structure"""
 
-    def __init__(self, base_path: str = "./output"):
+    def __init__(self, base_path: str = "engine/data"):
         """Initialize output manager.
         
         Args:
-            base_path: Root output directory (./output)
+            base_path: Root output directory (engine/data)
         """
         self.base_path = base_path
         os.makedirs(base_path, exist_ok=True)

@@ -81,7 +81,7 @@ pagination:
 
 output:
   format: "json"
-  path: "./output/"
+  path: "engine/data/"
   filename_template: "{date}.json"
 
 alert:
