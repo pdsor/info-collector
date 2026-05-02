@@ -281,7 +281,7 @@ def delete_rule_cmd(rule_path):
 @click.argument("rule_path")
 @click.option("--enable", "enabled", type=bool, default=None)
 def enable_rule_cmd(rule_path, enabled):
-    """启用/停用规则（修改 YAML 中 source.enabled 字段）"""
+    """启用/停用规则（修改 YAML 顶级 enabled 字段）"""
     import yaml
     full_path = _resolve_rule_path(rule_path)
     if not os.path.exists(full_path):
@@ -290,10 +290,8 @@ def enable_rule_cmd(rule_path, enabled):
     with open(full_path, "r", encoding="utf-8") as f:
         doc = yaml.safe_load(f)
     if enabled is None:
-        enabled = not doc.get("source", {}).get("enabled", True)
-    if "source" not in doc:
-        doc["source"] = {}
-    doc["source"]["enabled"] = enabled
+        enabled = not doc.get("enabled", True)
+    doc["enabled"] = enabled
     with open(full_path, "w", encoding="utf-8") as f:
         yaml.dump(doc, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
     click.echo(json.dumps({"success": True, "enabled": enabled}))

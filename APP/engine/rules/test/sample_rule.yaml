@@ -1,0 +1,7 @@
+name: Test Rule
+subject: test
+version: 1.0.0
+enabled: true
+source:
+  platform: test
+  type: api

@@ -2,6 +2,7 @@ name: "巨潮资讯 - 数据要素相关公告"
 subject: "数据要素"
 version: "1.0.0"
 description: "从巨潮资讯网搜索数据要素相关上市公司公告，适合追踪数据资产入表、数据产品登记等线索"
+enabled: true
 
 source:
   platform: "cninfo"

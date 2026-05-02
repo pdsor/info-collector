@@ -2,6 +2,7 @@ name: "钛媒体 - 数据要素相关文章"
 subject: "数据要素"
 version: "1.0.2"
 description: "从钛媒体官网抓取数据要素相关文章列表，适合追踪数据行业动态、政策解读、应用案例"
+enabled: true
 
 source:
   platform: "tmtpost"
