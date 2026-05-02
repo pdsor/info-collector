@@ -73,6 +73,9 @@ class TestEngineIntegration:
         """Test crawling API source with mock"""
         rule = self.engine.load_rule("rules/数据要素/cninfo_data_value_search.yaml")
 
+        # Disable pagination for this test (pagination logic now in fetch_with_pagination)
+        rule["pagination"] = {"enabled": False}
+
         fake_response = {
             "announcements": [
                 {
