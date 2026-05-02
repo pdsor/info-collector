@@ -47,28 +47,16 @@ class InfoCollectorEngine:
     
     def _crawl_api(self, rule: dict) -> list:
         """Crawl API source"""
-        # Build request parameters
-        params = self.api_crawler.build_request_params(rule)
-        
-        # Execute request
-        response_data = self.api_crawler.fetch(
-            params["url"],
-            method=params["method"],
-            headers=params.get("headers", {}),
-            data=params.get("data", {})
-        )
-        
-        # Parse items
-        items_path = rule.get("list", {}).get("items_path", "")
-        raw_items = self.api_crawler.parse_items(response_data, items_path)
-        
+        # Fetch all pages with pagination support
+        raw_items = self.api_crawler.fetch_with_pagination(rule)
+
         # Extract fields
         field_defs = rule.get("list", {}).get("fields", [])
         items = []
         for raw_item in raw_items:
             item = self.api_crawler.extract_fields(raw_item, field_defs)
             items.append(item)
-        
+
         return items
     
     def _crawl_html(self, rule: dict) -> list:

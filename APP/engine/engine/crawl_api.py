@@ -121,3 +121,42 @@ class APICrawler:
                     pass
         
         return value
+
+    def fetch_with_pagination(self, rule: dict) -> list:
+        """Fetch all pages and return combined results"""
+        params = self.build_request_params(rule)
+        pagination_cfg = rule.get("pagination", {})
+
+        if not pagination_cfg.get("enabled", False):
+            # Single page
+            response = self.fetch(
+                params["url"], method=params["method"],
+                headers=params.get("headers", {}), data=params.get("data", {})
+            )
+            items_path = rule.get("list", {}).get("items_path", "")
+            return self.parse_items(response, items_path)
+
+        page_param = pagination_cfg.get("page_param", "pageNum")
+        max_pages = pagination_cfg.get("max_pages", 10)
+
+        all_items = []
+        items_path = rule.get("list", {}).get("items_path", "")
+
+        for page in range(1, max_pages + 1):
+            # Replace page param in body
+            body = params.get("data", "")
+            body = re.sub(rf"{page_param}=[^&]*", f"{page_param}={page}", body)
+            if page_param not in body:
+                body = body + f"&{page_param}={page}" if body else f"{page_param}={page}"
+
+            response = self.fetch(
+                params["url"], method=params["method"],
+                headers=params.get("headers", {}), data=body
+            )
+
+            items = self.parse_items(response, items_path)
+            if not items:
+                break
+            all_items.extend(items)
+
+        return all_items
