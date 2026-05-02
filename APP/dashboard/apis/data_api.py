@@ -23,7 +23,7 @@ def _find_latest_data_file(data_dir: str, subject: str, platform: str):
     target_dir = os.path.join(data_dir, subject, platform)
     if not os.path.exists(target_dir):
         return None
-    json_files = glob.glob(os.path.join(target_dir, "data_*.json"))
+    json_files = glob.glob(os.path.join(target_dir, "*.json"))
     if not json_files:
         return None
     return max(json_files)  # 按文件名排序，含日期
@@ -182,7 +182,7 @@ def data_stats():
                 if not os.path.isdir(p_path):
                     continue
                 # 查找该平台目录下的数据文件
-                json_files = glob.glob(os.path.join(p_path, "data_*.json"))
+                json_files = glob.glob(os.path.join(p_path, "*.json"))
                 total_count = 0
                 latest_file = None
                 if json_files:
