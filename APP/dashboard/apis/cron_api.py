@@ -47,16 +47,23 @@ def _add_scheduler_job(job_row):
     if not scheduler:
         return
     job_id = f"cron_{job_row['id']}"
+    rule_path = job_row.get("rule_path", "")
 
-    def _run_cron():
-        # 调用 run-all
-        import subprocess, os, time
+    def _run_cron(rule_path=rule_path):
+        # 根据 rule_path 决定 run-all 还是 run-rule
+        import subprocess, os
         ENGINE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "engine")
         VENV_PY = os.path.join(ENGINE_DIR, ".venv", "bin", "python")
-        subprocess.Popen(
-            [VENV_PY, os.path.join(ENGINE_DIR, "engine_cli.py"), "run-all"],
-            cwd=ENGINE_DIR,
-        )
+        if rule_path:
+            subprocess.Popen(
+                [VENV_PY, os.path.join(ENGINE_DIR, "engine_cli.py"), "run-rule", rule_path],
+                cwd=ENGINE_DIR,
+            )
+        else:
+            subprocess.Popen(
+                [VENV_PY, os.path.join(ENGINE_DIR, "engine_cli.py"), "run-all"],
+                cwd=ENGINE_DIR,
+            )
 
     # 移除旧的（如果存在）
     try:
