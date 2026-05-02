@@ -191,8 +191,10 @@ class TestEnabledFieldConsistency:
             engine = InfoCollectorEngine(dedup_db_path=dedup_db, state_dir=state_dir)
             result = engine.run(rule_path)
 
-            # enabled=true 不应被跳过（实际因网络请求失败，但状态不是 skipped）
-            assert result.get("status") != "skipped" or result.get("reason") != "rule_disabled"
+            # enabled=true 不应被跳过（网络请求可能失败但状态不是 skipped）
+            # 等价于：不能同时 status=skipped AND reason=rule_disabled
+            assert not (result.get("status") == "skipped" and result.get("reason") == "rule_disabled"), \
+                f"enabled=true 的规则不应被跳过，实际: {result}"
 
     def test_yaml_no_enabled_field_defaults_true(self, sample_rule_no_enabled_field):
         """YAML 没有 enabled 字段 → engine 默认 enabled=True"""
@@ -215,7 +217,8 @@ class TestEnabledFieldConsistency:
             result = engine.run(rule_path)
 
             # 没有 enabled 字段时默认为 True，不应被跳过
-            assert result.get("status") != "skipped" or result.get("reason") != "rule_disabled"
+            assert not (result.get("status") == "skipped" and result.get("reason") == "rule_disabled"), \
+                f"无 enabled 字段时应默认为启用，实际: {result}"
 
     def test_state_manager_reads_enabled_correctly(self, temp_state_dir, sample_rule_enabled_true, sample_rule_enabled_false):
         """StateManager.register_rule 正确读取 enabled 状态"""
