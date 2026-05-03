@@ -6,7 +6,6 @@ InfoCollector 事件流协议
 """
 import time
 import json
-from typing import Optional, Any
 
 
 def _ts() -> int:
