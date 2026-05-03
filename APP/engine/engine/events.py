@@ -54,7 +54,7 @@ def event_skip(rule: str, reason: str) -> str:
     return emit("skip", rule=rule, reason=reason)
 
 
-def event_complete(rule: str, new_count: int, skip_count: int = 0, duration: float) -> str:
+def event_complete(rule: str, new_count: int = 0, skip_count: int = 0, duration: float = 0.0) -> str:
     """单个规则执行完成"""
     return emit("complete", rule=rule, new_count=new_count, skip_count=skip_count, duration=round(duration, 2))
 

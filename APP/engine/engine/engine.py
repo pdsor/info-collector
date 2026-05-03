@@ -185,11 +185,22 @@ class InfoCollectorEngine:
         """Save items to JSON output"""
         return self.output_mgr.save(items, rule, dedup_filtered)
     
-    def run(self, rule_path: str) -> dict:
+    def run(self, rule_path: str, event_handler=None) -> dict:
         """Run full collection pipeline, record state, return result dict"""
+        import time
+        import traceback
+
+        from engine.events import (
+            event_start, event_status, event_error,
+            event_complete, event_skip
+        )
+
+        if event_handler is None:
+            event_handler = lambda line: print(line)
+
         rule_name = None
         execution_id = None
-        error_msg = None
+        start = time.time()
 
         try:
             # Load rule
@@ -199,8 +210,12 @@ class InfoCollectorEngine:
             # Register rule in state (auto-update if already exists)
             self.state_mgr.register_rule(rule_path, rule)
 
+            # Emit start event
+            event_handler(event_start(rule_path))
+
             # Skip if disabled
             if not rule.get("enabled", True):
+                event_handler(event_skip(rule_path, "rule_disabled"))
                 return {
                     "status": "skipped",
                     "reason": "rule_disabled",
@@ -210,11 +225,16 @@ class InfoCollectorEngine:
             # Record start
             execution_id = self.state_mgr.record_start(rule_name)
 
+            # Emit running status
+            event_handler(event_status(rule_path, "running", "开始采集..."))
+
             # Crawl
             items = self.crawl(rule)
+            event_handler(event_status(rule_path, "running", f"采集完成，共 {len(items)} 条"))
 
             # Deduplicate
             items, dedup_filtered = self.deduplicate(items, rule)
+            event_handler(event_status(rule_path, "running", f"去重后 {len(items)} 条新数据"))
 
             # Save output
             output_path = self.save_output(items, rule, dedup_filtered)
@@ -228,16 +248,22 @@ class InfoCollectorEngine:
                 output_path=output_path,
             )
 
+            duration = time.time() - start
+            event_handler(event_complete(rule_path, new_count=len(items), skip_count=dedup_filtered, duration=duration))
+
             return {
                 "status": "success",
                 "rule": rule_name,
                 "collected": len(items),
                 "dedup_filtered": dedup_filtered,
                 "output_path": output_path,
+                "duration": duration,
             }
 
         except Exception as e:
             error_msg = f"{type(e).__name__}: {str(e)}"
+            duration = time.time() - start
+            tb_detail = traceback.format_exc()
 
             # Record failure
             if execution_id and rule_name:
@@ -250,19 +276,35 @@ class InfoCollectorEngine:
                     error=error_msg,
                 )
 
+            event_handler(event_error(rule_path, message=str(e), detail=tb_detail[-200:]))
+            event_handler(event_complete(rule_path, new_count=0, skip_count=0, duration=duration))
+
             return {
                 "status": "failed",
                 "rule": rule_name,
                 "error": error_msg,
+                "duration": duration,
             }
 
-    def run_all(self, rules_dir: str = "./rules") -> list:
+    def run_all(self, rules_dir: str = "./rules", event_handler=None) -> list:
         """Run all enabled rules in the rules directory (recursively including
         subject sub-directories), return list of results.
         """
+        import time
+
+        if event_handler is None:
+            event_handler = lambda line: print(line)
+
+        from engine.events import event_start, event_skip, event_summary
+
         results = []
         if not os.path.isdir(rules_dir):
             return results
+
+        start = time.time()
+        total_new = 0
+        total_skip = 0
+        total_error = 0
 
         def scan(r_dir):
             """Recursively collect all YAML file paths."""
@@ -276,7 +318,22 @@ class InfoCollectorEngine:
             return paths
 
         for fpath in scan(rules_dir):
-            result = self.run(fpath)
+            result = self.run(fpath, event_handler=event_handler)
             results.append(result)
+            if result.get("status") == "success":
+                total_new += result.get("collected", 0)
+            elif result.get("status") == "skipped":
+                total_skip += 1
+            else:
+                total_error += 1
+
+        duration = time.time() - start
+        event_handler(event_summary(
+            total_rules=len(results),
+            total_new=total_new,
+            total_skip=total_skip,
+            total_error=total_error,
+            duration=duration,
+        ))
 
         return results
