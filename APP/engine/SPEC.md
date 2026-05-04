@@ -175,7 +175,7 @@ id = id_template.format(raw_id=raw_id)
 
 ## 8. Implementation Tasks
 
-| Task | Status |
+|| Task | Status ||
 |------|--------|
 | 创建项目目录结构 | ✅ |
 | 编写 SPEC.md | ✅ |
@@ -187,3 +187,82 @@ id = id_template.format(raw_id=raw_id)
 | 实现 InfoCollectorEngine | ✅ |
 | 编写测试用例 | ✅ |
 | 验证 YAML 规则文件 | ✅ |
+
+## 9. JSONL Event Stream Protocol (v2.0)
+
+`engine_cli run-rule --format=jsonl` 和 `run-all --format=jsonl` 输出以下 JSONL 行，每行一个 JSON 对象：
+
+| event.type | 触发时机 | 关键字段 |
+|-----------|---------|---------|
+| `start` | 规则开始执行 | `rule`, `ts` |
+| `status` | 阶段变化 | `rule`, `status`, `msg`, `ts` |
+| `item` | 每条采集结果（仅调试模式） | `rule`, `data`, `ts` |
+| `progress` | 分页/列表进度 | `rule`, `phase`, `current`, `total`, `ts` |
+| `error` | 采集异常 | `rule`, `message`, `detail`, `ts` |
+| `skip` | 规则跳过 | `rule`, `reason`, `ts` |
+| `complete` | 单规则完成 | `rule`, `new_count`, `skip_count`, `duration`, `ts` |
+| `summary` | 全部规则汇总（仅 run-all） | `total_rules`, `total_new`, `total_skip`, `total_error`, `duration`, `ts` |
+
+> 注意：`engine_cli run-rule --format=json`（旧模式）仍返回结构化 JSON 结果，用于向后兼容。
+
+## 10. Dashboard Task System
+
+### 10.1 Task Lifecycle
+
+```
+POST /api/tasks/run-all           POST /api/tasks/run-single/<path>    Cron trigger
+        │                                    │                              │
+        └────────── trigger_task() ──────────┘                              │
+                    │                                                     │
+                    ├── 写入 task_history (status=running)                  │
+                    ├── 启动后台线程执行 engine_cli --format=jsonl          │
+                    ├── 返回 task_id  ──────────────────────────────────→ │
+                    │                                                     │
+              SSE /api/tasks/stream/<task_id>  ←订阅────────────────────────┘
+                    │
+                    ├── engine_cli stdout 逐行 JSONL 解析
+                    ├── 写入 task_history (status, new_count, duration)
+                    └── 完成时 status=running→completed/failed
+```
+
+### 10.2 Database Schema
+
+**task_history 表**（由 migration 002_task_enhance.sql 创建）：
+
+```sql
+CREATE TABLE task_history (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_name   TEXT    NOT NULL,
+    status      TEXT    DEFAULT 'running',   -- running|completed|failed
+    new_count   INTEGER,
+    skip_count  INTEGER DEFAULT 0,
+    error_count INTEGER DEFAULT 0,
+    duration    REAL,
+    created_at  TEXT    DEFAULT (datetime('now', 'localtime')),
+    finished_at TEXT,
+    trigger_type TEXT   DEFAULT 'manual',     -- manual|cron|api
+    rule_path   TEXT                              -- 单规则执行为规则路径
+);
+```
+
+### 10.3 Dashboard API Endpoints
+
+|| Method | Path | 描述 |
+|--------|-------|------|
+| `GET` | `/api/tasks/history` | 查询任务历史（分页） |
+| `POST` | `/api/tasks/run-all` | 触发全量执行，返回 `{task_id}` |
+| `POST` | `/api/tasks/run-single/<path>` | 触发单规则执行，返回 `{task_id}` |
+| `GET` | `/api/tasks/stream/<task_id>` | **SSE** 事件流订阅 |
+
+### 10.4 SSE Event Flow
+
+1. 客户端 `GET /api/tasks/stream/<task_id>`
+2. 服务端立即返回 `text/event-stream` 响应头
+3. 后台线程执行 `engine_cli --format=jsonl`，stdout 逐行写入 SSE
+4. 服务端按 event type 转发：`data: {"type":"...","..."}\n\n`
+5. 任务结束时发送 `event: done\ndata: {...}\n\n`，客户端关闭连接
+6. 心跳（每 15s）：`event: heartbeat\ndata: {}\n\n`
+
+### 10.5 Cron Integration
+
+`cron_api.py` 在 APScheduler `run_job` 回调中调用 `trigger_task()`，由 `TaskExecutor` 统一处理异步执行链：记录 task_history → 执行 engine_cli → 通过 SSE 推送事件 → 更新 task_history 状态。
