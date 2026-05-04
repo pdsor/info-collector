@@ -108,12 +108,22 @@ def toggle_rule(rule_path):
 
 @rules_bp.route("/<path:rule_path>/run", methods=["POST"])
 def run_rule(rule_path):
-    """POST /api/rules/<path>/run - Execute a rule immediately."""
-    stdout, stderr, code = run_engine_cli(["run-rule", rule_path, "--format=json"])
-    if code != 0:
-        return jsonify({"error": stderr or "Failed to run rule"}), 500
-    try:
-        data = json.loads(stdout)
-        return jsonify(data)
-    except json.JSONDecodeError:
-        return jsonify({"error": "Invalid JSON from engine_cli", "raw": stdout}), 500
+    """POST /api/rules/<path>/run — 异步执行单个规则，立即返回 task_id"""
+    from APP.dashboard.apis.tasks_api import trigger_task
+
+    task_name = f"manual: {rule_path}"
+    ENGINE_DIR = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "engine"
+    )
+    VENV_PY = os.path.join(ENGINE_DIR, ".venv", "bin", "python")
+    CLI = os.path.join(ENGINE_DIR, "engine_cli.py")
+    cmd = [VENV_PY, CLI, "run-rule", rule_path, "--format=jsonl"]
+
+    task_id = trigger_task(
+        task_name=task_name,
+        cmd=cmd,
+        trigger_type="manual",
+        rule_path=rule_path,
+    )
+    return jsonify({"task_id": task_id, "status": "running"})
