@@ -137,9 +137,21 @@ def cli():
 
 
 @cli.command("run-all")
-def cmd_run_all():
-    """执行 rules/ 下所有已启用规则"""
+@click.option("--format", "fmt", default="text")
+def cmd_run_all(fmt):
+    """执行 rules/ 下所有已启用规则
+    --format=text: 人类可读输出（默认）
+    --format=jsonl: JSONL 事件流（Dashboard 专用）
+    """
     e = _engine()
+
+    if fmt == "jsonl":
+        def emit(line):
+            click.echo(line)
+        results = e.run_all(RULES_DIR, event_handler=emit)
+        return
+
+    # 原有文本模式
     print(f"扫描规则目录: {RULES_DIR}")
     results = e.run_all(RULES_DIR)
     print(f"\n执行完成，共 {len(results)} 条规则:")
@@ -301,15 +313,27 @@ def enable_rule_cmd(rule_path, enabled):
 @click.argument("rule_path")
 @click.option("--format", "fmt", default="text")
 def run_rule_cmd(rule_path, fmt):
-    """手动执行单个规则，返回 JSON 结果"""
+    """手动执行单个规则
+    --format=text: 人类可读输出（默认）
+    --format=json: 单行 JSON 结果
+    --format=jsonl: JSONL 事件流（Dashboard 专用）
+    """
     import time
     start = time.time()
     try:
-        # rule_path here is a file path, use _resolve_rule_path for full path
         full_path = _resolve_rule_path(rule_path)
         e = _engine()
+
+        if fmt == "jsonl":
+            # JSONL 模式：engine.run 内部通过 event_handler 逐行输出事件
+            def emit(line):
+                click.echo(line)
+            result = e.run(full_path, event_handler=emit)
+            return
+
         result = e.run(full_path)
         duration = time.time() - start
+
         if fmt == "json":
             click.echo(json.dumps({
                 "success": result.get("status") == "success",
@@ -326,6 +350,11 @@ def run_rule_cmd(rule_path, fmt):
                 "error": str(ex),
                 "duration": round(duration, 2),
             }, ensure_ascii=False))
+        elif fmt == "jsonl":
+            from engine.events import event_error, event_complete
+            import traceback
+            click.echo(event_error(rule_path, message=str(ex), detail=traceback.format_exc()[-200:]))
+            click.echo(event_complete(rule_path, new_count=0, duration=duration))
         else:
             click.echo(f"ERROR: {ex}", err=True)
 
