@@ -47,23 +47,36 @@ def _add_scheduler_job(job_row):
     if not scheduler:
         return
     job_id = f"cron_{job_row['id']}"
-    rule_path = job_row.get("rule_path", "")
+    rule_path = job_row.get("rule_path", "") or ""
+    job_name = job_row.get("name", f"cron_{job_id}")
 
-    def _run_cron(rule_path=rule_path):
-        # 根据 rule_path 决定 run-all 还是 run-rule
-        import subprocess, os
-        ENGINE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "engine")
+    def _run_cron(job_row=job_row):
+        """Cron 触发时调用：创建任务记录并异步执行"""
+        from APP.dashboard.apis.tasks_api import trigger_task
+        import os
+        ENGINE_DIR = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "engine"
+        )
         VENV_PY = os.path.join(ENGINE_DIR, ".venv", "bin", "python")
+        CLI = os.path.join(ENGINE_DIR, "engine_cli.py")
+
+        name = job_row.get("name", f"cron_{job_row['id']}")
+        rule_path = job_row.get("rule_path", "") or ""
+
+        task_name = f"cron: {name}"
         if rule_path:
-            subprocess.Popen(
-                [VENV_PY, os.path.join(ENGINE_DIR, "engine_cli.py"), "run-rule", rule_path],
-                cwd=ENGINE_DIR,
-            )
+            cmd = [VENV_PY, CLI, "run-rule", rule_path, "--format=jsonl"]
         else:
-            subprocess.Popen(
-                [VENV_PY, os.path.join(ENGINE_DIR, "engine_cli.py"), "run-all"],
-                cwd=ENGINE_DIR,
-            )
+            cmd = [VENV_PY, CLI, "run-all", "--format=jsonl"]
+
+        trigger_task(
+            task_name=task_name,
+            cmd=cmd,
+            trigger_type="cron",
+            rule_path=rule_path,
+        )
+        # 不等待，任务在后台线程执行，结果写入 task_history
 
     # 移除旧的（如果存在）
     try:
@@ -72,7 +85,6 @@ def _add_scheduler_job(job_row):
         pass
 
     # 添加新的 — APScheduler cron trigger 直接接受字符串 "*" 或整数
-    # 注意: id 是 add_job 的参数，不是 CronTrigger 的
     scheduler.add_job(
         _run_cron,
         "cron",
