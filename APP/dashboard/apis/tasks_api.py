@@ -203,6 +203,7 @@ def run_task_async(task_id: int, cmd: list, task_name: str, trigger_type: str, r
         update_task(task_id, final, error_message, total_new, duration)
         _sse_push(task_id, {
             "type": "done",
+            "event": "done",   # 前端通过 addEventListener('done', ...) 捕获
             "success": final == "success",
             "total_new": total_new,
             "total_skip": total_skip,
@@ -281,7 +282,11 @@ def stream_task(task_id):
         while True:
             try:
                 data = q.get(timeout=60)
-                yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+                # 有 event 字段时使用命名事件（event: name），否则用普通 data:
+                if data.get("event"):
+                    yield f"event: {data['event']}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+                else:
+                    yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
                 if data.get("type") == "done":
                     break
             except queue.Empty:
@@ -290,8 +295,8 @@ def stream_task(task_id):
                     status = _task_states.get(task_id, {}).get("status", "running")
                 if status in ("done", "success", "failed"):
                     break
-                # 发送心跳
-                yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
+                # 发送心跳 — 使用 event: 命名行，前端通过 addEventListener 捕获
+                yield f"event: heartbeat\ndata: {json.dumps({'type': 'heartbeat'})}\n\n"
 
         # 清理队列引用
         with _task_lock:

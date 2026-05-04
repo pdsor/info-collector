@@ -28,12 +28,22 @@ const API = {
 
     sse(url, handlers) {
         const es = new EventSource(url);
+        // 普通消息（data: xxx，无 event: name）
         es.onmessage = (e) => {
             try {
                 const data = JSON.parse(e.data);
+                // 忽略心跳（由专门监听器处理）
+                if (data.type === 'heartbeat') return;
                 handlers.onData?.(data);
             } catch {}
         };
+        // 命名事件：done（任务结束）
+        es.addEventListener('done', (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                handlers.onData?.(data);  // data.type === 'done'
+            } catch {}
+        });
         es.onerror = (e) => { handlers.onError?.(e); };
         return es;
     }
