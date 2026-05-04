@@ -130,6 +130,7 @@ const RuleList = {
         const showRunDialog = ref(false);
         const runResult = ref(null);
         const runResultDuration = ref(null);
+        const runOutput = ref([]);
 
         const loadRules = async () => {
             try {
@@ -156,10 +157,34 @@ const RuleList = {
             showRunDialog.value = true;
             runResult.value = null;
             runResultDuration.value = null;
+            runOutput.value = [{ type: 'info', text: `正在执行 ${rule.name}...` }];
+
             try {
-                const data = await API.post(`/rules/${encodeURIComponent(rule.path)}/run`, {});
-                runResult.value = data;
-                if (data.duration !== undefined) runResultDuration.value = data.duration;
+                const { task_id } = await API.post(`/rules/${encodeURIComponent(rule.path)}/run`, {});
+
+                const es = API.sse(`/api/tasks/stream/${task_id}`, {
+                    onData(data) {
+                        if (data.type === 'start') {
+                            runOutput.value.push({ type: 'info', text: '任务已启动，监控执行中...' });
+                        } else if (data.type === 'status') {
+                            runOutput.value.push({ type: 'log', text: `[${data.rule}] ${data.msg}` });
+                        } else if (data.type === 'progress') {
+                            runOutput.value.push({ type: 'log', text: `[${data.rule}] ${data.phase} (${data.current}/${data.total})` });
+                        } else if (data.type === 'error') {
+                            runOutput.value.push({ type: 'error', text: `❌ [${data.rule}] ${data.message}` });
+                        } else if (data.type === 'complete') {
+                            runOutput.value.push({ type: 'log', text: `✅ [${data.rule}] 完成: 新增 ${data.new_count} 条，耗时 ${data.duration}s` });
+                        } else if (data.type === 'done') {
+                            runOutput.value.push({ type: 'done', text: `执行${data.success ? '成功' : '失败'} — 新增: ${data.total_new} | 跳过: ${data.total_skip} | 错误: ${data.total_error} | 耗时: ${data.duration}s` });
+                            runResult.value = { success: data.success, new_count: data.total_new, duration: data.duration };
+                            runResultDuration.value = data.duration;
+                            es.close();
+                        }
+                    },
+                    onError() {
+                        runOutput.value.push({ type: 'error', text: 'SSE 连接断开' });
+                    }
+                });
             } catch (err) {
                 console.error('runRule error:', err);
                 runResult.value = { success: false, error: err.message };
@@ -196,7 +221,7 @@ const RuleList = {
         onMounted(loadRules);
 
         return {
-            rules, showRunDialog, runResult, runResultDuration,
+            rules, showRunDialog, runResult, runResultDuration, runOutput,
             loadRules, toggleRule, runRule, editRule, createRule, deleteRule,
         };
     },
@@ -228,15 +253,18 @@ const RuleList = {
   </table>
 
   <div v-if="showRunDialog" class="dialog-overlay" @click.self="showRunDialog = false">
-    <div class="dialog">
+    <div class="dialog" style="max-width:700px">
       <h3>执行结果</h3>
+      <div v-if="runOutput.length > 0" class="terminal-window" style="max-height:300px;overflow-y:auto;margin-bottom:12px">
+        <div v-for="(line, i) in runOutput" :key="i" :class="['term-line', line.type]">{{ line.text }}</div>
+      </div>
       <div v-if="runResult">
         <p>状态: {{ runResult.success ? '✅ 成功' : '❌ 失败' }}</p>
-        <p>新增数据: {{ runResult.new_count ?? runResult.newCount ?? '-' }} 条</p>
-        <p>耗时: {{ runResult.duration ?? runResultDuration ?? '-' }} 秒</p>
+        <p>新增数据: {{ runResult.new_count ?? '-' }} 条</p>
+        <p>耗时: {{ runResult.duration ?? '-' }} 秒</p>
         <p v-if="runResult.error" class="error-msg">{{ runResult.error }}</p>
       </div>
-      <div v-else><p>加载中...</p></div>
+      <div v-else-if="runOutput.length === 0"><p>加载中...</p></div>
       <div style="margin-top:16px;text-align:right">
         <button @click="showRunDialog = false" class="btn-primary">关闭</button>
       </div>
@@ -252,7 +280,7 @@ const TaskRunner = {
         const isRunning = ref(false);
         const output = ref([]);
         const taskHistory = ref([]);
-        let es = null;
+        const activeEs = ref(null);
 
         const loadHistory = async () => {
             try {
@@ -263,39 +291,59 @@ const TaskRunner = {
             }
         };
 
-        const startRunAll = () => {
+        const startRunAll = async () => {
             isRunning.value = true;
-            output.value = [{ type: 'info', text: '开始执行所有已启用规则...' }];
+            output.value = [{ type: 'info', text: '正在创建任务...' }];
 
-            es = API.sse('/api/tasks/stream', {
-                onData(data) {
-                    if (data.type === 'output') {
-                        output.value.push({ type: 'log', text: data.line });
-                    } else if (data.type === 'done') {
-                        output.value.push({ type: 'done', text: `执行完成，返回码: ${data.returncode}` });
+            try {
+                const { task_id } = await API.post('/tasks/run-all', {});
+
+                const es = API.sse(`/api/tasks/stream/${task_id}`, {
+                    onData(data) {
+                        if (data.type === 'start') {
+                            output.value.push({ type: 'info', text: `任务已启动 (ID: ${task_id})，监控执行中...` });
+                        } else if (data.type === 'status') {
+                            output.value.push({ type: 'log', text: `[${data.rule}] ${data.msg}` });
+                        } else if (data.type === 'progress') {
+                            output.value.push({ type: 'log', text: `[${data.rule}] ${data.phase} (${data.current}/${data.total})` });
+                        } else if (data.type === 'error') {
+                            output.value.push({ type: 'error', text: `❌ [${data.rule}] ${data.message}` });
+                        } else if (data.type === 'complete') {
+                            output.value.push({ type: 'log', text: `✅ [${data.rule}] 新增 ${data.new_count} 条，耗时 ${data.duration}s` });
+                        } else if (data.type === 'done') {
+                            const icon = data.success ? '✅' : '❌';
+                            output.value.push({ type: 'done', text: `${icon} 执行${data.success ? '成功' : '失败'} — 新增: ${data.total_new} | 跳过: ${data.total_skip} | 错误: ${data.total_error} | 耗时: ${data.duration}s` });
+                            isRunning.value = false;
+                            activeEs.value = null;
+                            loadHistory();
+                            es.close();
+                        } else if (data.type === 'heartbeat') {
+                            // ignore
+                        }
+                    },
+                    onError() {
+                        output.value.push({ type: 'error', text: 'SSE 连接断开' });
                         isRunning.value = false;
-                        loadHistory();
-                    } else if (data.type === 'error') {
-                        output.value.push({ type: 'error', text: data.error });
-                        isRunning.value = false;
+                        activeEs.value = null;
                     }
-                },
-                onError() {
-                    output.value.push({ type: 'error', text: 'SSE 连接断开' });
-                    isRunning.value = false;
-                }
-            });
+                });
+                activeEs.value = es;
+            } catch (err) {
+                output.value.push({ type: 'error', text: '启动失败: ' + err.message });
+                isRunning.value = false;
+            }
         };
 
         const stopRunAll = () => {
-            es?.close();
+            activeEs.value?.close();
+            activeEs.value = null;
             isRunning.value = false;
         };
 
         onMounted(loadHistory);
-        onUnmounted(() => es?.close());
+        onUnmounted(() => activeEs.value?.close());
 
-        return { isRunning, output, taskHistory, startRunAll, stopRunAll, loadHistory };
+        return { isRunning, output, taskHistory, activeEs, startRunAll, stopRunAll, loadHistory };
     },
     template: `
 <div class="task-runner">
