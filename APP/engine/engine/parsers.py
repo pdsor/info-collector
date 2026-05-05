@@ -70,18 +70,26 @@ class JSONParser:
 
     @staticmethod
     def find(data: dict, jsonpath_expr: str) -> list:
-        """使用 JSONPath 表达式从 JSON 数据中提取值
+        """使用 JSONPath 表达式从 JSON 数据中提取值（自动扁平化）.
 
         Args:
             data: JSON 数据（dict 或 list）
-            jsonpath_expr: JSONPath 表达式，如 "$.data[*]" 或 "$..items[?(@.id)]"
+            jsonpath_expr: JSONPath 表达式，如 "$.data[*]" 或 "$.data"
 
         Returns:
-            匹配的值的列表
+            匹配的值的列表（已扁平化，内部列表被打平）.
+            空数组路径返回 [] 而非 [[]].
         """
         try:
             jp = jsonpath_parse(jsonpath_expr)
-            return [m.value for m in jp.find(data)]
+            results = []
+            for m in jp.find(data):
+                v = m.value
+                if isinstance(v, list):
+                    results.extend(v)  # 扁平化
+                else:
+                    results.append(v)
+            return results
         except Exception as e:
             logger.warning("JSONPath query failed: expr=%s, error=%s", jsonpath_expr, e)
             return []
