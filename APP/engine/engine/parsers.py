@@ -1,4 +1,5 @@
 """engine/parsers.py - 统一解析层，基于 parsel + jsonpath-ng"""
+import logging
 import re
 import json
 from datetime import datetime
@@ -6,6 +7,8 @@ from typing import Optional
 
 import parsel
 from jsonpath_ng import parse as jsonpath_parse
+
+logger = logging.getLogger(__name__)
 
 
 # ── UA 策略常量 ────────────────────────────────────────────────
@@ -79,7 +82,8 @@ class JSONParser:
         try:
             jp = jsonpath_parse(jsonpath_expr)
             return [m.value for m in jp.find(data)]
-        except Exception:
+        except Exception as e:
+            logger.warning("JSONPath query failed: expr=%s, error=%s", jsonpath_expr, e)
             return []
 
     @staticmethod
@@ -107,9 +111,9 @@ class JSONParser:
             return value
 
     TRANSFORM_MAP = {
-        "strip_html": transform_strip_html.__func__,
+        "strip_html": transform_strip_html,
         "trim": lambda v: str(v).strip() if v else v,
-        "timestamp_ms_to_iso": transform_timestamp_ms_to_iso.__func__,
+        "timestamp_ms_to_iso": transform_timestamp_ms_to_iso,
     }
 
     @classmethod
