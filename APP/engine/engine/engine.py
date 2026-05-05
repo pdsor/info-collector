@@ -61,10 +61,12 @@ class InfoCollectorEngine:
     
     def _crawl_html(self, rule: dict) -> list:
         """Crawl HTML source"""
-        url = rule.get("source", {}).get("url", "")
-        
-        # Fetch HTML
-        html_content = self.html_crawler.fetch(url)
+        source = rule.get("source", {})
+        url = source.get("url", "")
+        request_headers = rule.get("request", {}).get("headers", {})
+
+        # Fetch HTML (pass headers from rule if defined)
+        html_content = self.html_crawler.fetch(url, headers=request_headers)
         
         # Parse items
         items_path = rule.get("list", {}).get("items_path", "")

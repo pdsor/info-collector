@@ -1,0 +1,53 @@
+name: "抖音搜索 - 朱之文演出视频"
+subject: "大衣哥朱之文演出"
+version: "1.0.0"
+description: "在抖音网页版搜索大衣哥朱之文相关视频，很多视频标题/位置标签含演出地点，JS渲染需Browser模式"
+enabled: true
+
+source:
+  platform: "douyin"
+  type: "browser"
+  subject: "大衣哥朱之文演出"
+  url: "https://www.douyin.com/search/%E7%9A%AE%E4%B9%8B%E6%96%87%E6%BC%94%E5%87%BA?type=video"
+
+render:
+  enabled: true
+  wait_for_selector: "[data-e2e='search-item']"
+  wait_for_timeout: 5000
+
+list:
+  # 抖音搜索结果：提取视频标题+视频链接
+  items_path: 'regex:<a[^>]*href="(\/video\/[^"?]+)"[^>]*title="([^"]+)"[^>]*>'
+  fields:
+    - name: "title"
+      type: "element_text"
+    - name: "url"
+      type: "element_href"
+    - name: "platform"
+      type: "constant"
+      value: "抖音"
+    - name: "source"
+      type: "constant"
+      value: "抖音短视频"
+    - name: "event_type"
+      type: "constant"
+      value: "短视频内容"
+    - name: "publish_time"
+      type: "constant"
+      value: null
+    - name: "location"
+      type: "constant"
+      value: null
+
+dedup:
+  incremental: true
+  id_template: "douyin_{md5}"
+  url_to_id_pattern: "video/([^?]+)"
+
+output:
+  format: "json"
+  filename_template: "douyin_zhuzhiwen_{date}.json"
+
+alert:
+  on_failure: true
+  retry_times: 3

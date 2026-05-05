@@ -23,7 +23,7 @@ class HTMLCrawler:
         if items_path.startswith("regex:"):
             pattern = items_path[6:]  # strip "regex:" prefix
             results = []
-            for m in re.finditer(pattern, html_content):
+            for m in re.finditer(pattern, html_content, re.DOTALL):
                 groups = m.groups()
                 if len(groups) >= 2:
                     results.append({"href": groups[0], "title": groups[1]})

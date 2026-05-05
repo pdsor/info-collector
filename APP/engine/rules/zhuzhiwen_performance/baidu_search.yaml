@@ -1,0 +1,54 @@
+name: "百度搜索 - 朱之文演出信息"
+subject: "大衣哥朱之文演出"
+version: "1.0.0"
+description: "通过百度搜索抓取大衣哥朱之文演出相关报道，覆盖全国各省市演出活动"
+enabled: true
+
+source:
+  platform: "baidu"
+  type: "html"
+  subject: "大衣哥朱之文演出"
+  url: "https://www.baidu.com/s?wd=朱之文演出&rn=20"
+
+request:
+  method: "GET"
+  headers:
+    User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+    Accept-Language: "zh-CN,zh;q=0.9"
+
+list:
+  items_path: 'regex:<h3[^>]*class="[^"]*c-title[^"]*"[^>]*>.*?<a[^>]*href="([^"]+)"[^>]*>([^<]+)</a>'
+  fields:
+    - name: "title"
+      type: "element_text"
+    - name: "url"
+      type: "element_href"
+    - name: "platform"
+      type: "constant"
+      value: "百度搜索"
+    - name: "source"
+      type: "constant"
+      value: "百度"
+    - name: "event_type"
+      type: "constant"
+      value: "演出报道"
+    - name: "publish_time"
+      type: "constant"
+      value: null
+    - name: "location"
+      type: "constant"
+      value: null
+
+dedup:
+  incremental: true
+  id_template: "baidu_{hash}"
+  url_to_id_pattern: "https?://([^/]+)"
+
+output:
+  format: "json"
+  filename_template: "baidu_zhuzhiwen_{date}.json"
+
+alert:
+  on_failure: true
+  retry_times: 3

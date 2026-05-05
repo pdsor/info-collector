@@ -1,0 +1,55 @@
+name: "微博超话 - 朱之文动态"
+subject: "大衣哥朱之文演出"
+version: "1.0.0"
+description: "抓取微博超话中大衣哥朱之文的最新动态和演出通知，JS渲染页面需Browser模式"
+enabled: true
+
+source:
+  platform: "weibo"
+  type: "browser"
+  subject: "大衣哥朱之文演出"
+  url: "https://s.weibo.com/weibo?q=%E7%9A%AE%E4%B9%8B%E6%96%87%E6%BC%94%E5%87%BA&Refer=SWeibo_box"
+
+render:
+  enabled: true
+  wait_for_selector: ".card-wrap"
+  wait_for_timeout: 5000
+
+list:
+  items_path: 'regex:<div[^>]*class="[^"]*card-wrap[^"]*"[^>]*>.*?href="([^"]+)"[^>]*>.*?<p[^>]*class="[^"]*txt[^"]*"[^>]*>([^<]+)</p>'
+  fields:
+    - name: "title"
+      type: "element_text"
+    - name: "url"
+      type: "element_href"
+    - name: "platform"
+      type: "constant"
+      value: "微博"
+    - name: "source"
+      type: "constant"
+      value: "微博超话"
+    - name: "event_type"
+      type: "constant"
+      value: "微博动态"
+    - name: "publish_time"
+      type: "constant"
+      value: null
+    - name: "location"
+      type: "constant"
+      value: null
+
+detail:
+  enabled: false
+
+dedup:
+  incremental: true
+  id_template: "weibo_{md5}"
+  url_to_id_pattern: "weibo.com/([^?]+)"
+
+output:
+  format: "json"
+  filename_template: "weibo_zhuzhiwen_{date}.json"
+
+alert:
+  on_failure: true
+  retry_times: 3

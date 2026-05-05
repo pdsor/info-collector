@@ -1,0 +1,62 @@
+name: "搜狗微信 - 朱之文相关公众号文章"
+subject: "大衣哥朱之文演出"
+version: "1.0.0"
+description: "通过搜狗微信搜索抓取大衣哥朱之文相关微信公众号文章，间接覆盖微信公众号平台的演出信息"
+enabled: true
+
+source:
+  platform: "weixin"
+  type: "html"
+  subject: "大衣哥朱之文演出"
+  url: "https://weixin.sogou.com/weixin?type=2&query=%E6%9C%B1%E4%B9%8B%E6%96%87%E6%BC%94%E5%87%BA&ie=utf8"
+
+request:
+  method: "GET"
+  headers:
+    User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+    Accept-Language: "zh-CN,zh;q=0.9"
+    Referer: "https://weixin.sogou.com/"
+
+list:
+  # 搜狗微信文章列表: <li id="sogou_vr_xxx_box_N"><div class="txt-box"><h3><a href="/link?url=...">inner_html</a>
+  # 标题在<a>的innerHTML中，含<em>标签，用(.*?)匹配后strip HTML
+  items_path: 'regex:<li[^>]*id="sogou_vr_[^"]+_box_[0-9]+"[^>]*>.*?<div[^>]*class="txt-box"[^>]*>.*?<h3[^>]*>.*?<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>'
+  fields:
+    - name: "title"
+      type: "element_text"
+    - name: "url"
+      type: "element_href"
+    - name: "platform"
+      type: "constant"
+      value: "微信公众号"
+    - name: "source"
+      type: "constant"
+      value: "搜狗微信"
+    - name: "event_type"
+      type: "constant"
+      value: "公众号文章"
+    - name: "publish_time"
+      type: "constant"
+      value: null
+    - name: "location"
+      type: "constant"
+      value: null
+
+pagination:
+  enabled: true
+  page_param: "page"
+  max_pages: 5
+
+dedup:
+  incremental: true
+  id_template: "weixin_{md5}"
+  url_to_id_pattern: "url=([^&]+)"
+
+output:
+  format: "json"
+  filename_template: "weixin_zhuzhiwen_{date}.json"
+
+alert:
+  on_failure: true
+  retry_times: 3
