@@ -5,6 +5,8 @@ import random
 from datetime import datetime
 from typing import Optional
 
+from .parsers import HTMLParser
+
 
 # Common desktop User-Agents
 USER_AGENTS = [
@@ -160,15 +162,52 @@ class BrowserCrawler:
             context.close()
 
     def parse_items(self, html_content: str, items_path: str) -> list:
-        """Parse items from browser-rendered HTML using regex-based extraction.
+        """Parse items from browser-rendered HTML.
 
-        Same format as HTMLCrawler.parse_items():
+        Supports three modes:
           - regex:"<pattern>"  — regex with groups: href, text, title
+          - css:"<selector>"   — CSS selector, extracts href and text
+          - xpath:"<xpath>"    — XPath expression, extracts href and text
         """
+        # CSS selector mode
+        if items_path.startswith("css:"):
+            selector = items_path[4:]
+            parser = HTMLParser(html_content)
+            results = []
+            for elem in parser.css(selector).selector:
+                item = {}
+                href = elem.xpath("@href").get()
+                if href:
+                    item["href"] = href
+                text = elem.css("::text").get()
+                if text:
+                    item["title"] = text.strip()
+                if item:
+                    results.append(item)
+            return results
+
+        # XPath mode
+        if items_path.startswith("xpath:"):
+            xpath_expr = items_path[6:]
+            parser = HTMLParser(html_content)
+            results = []
+            for elem in parser.xpath(xpath_expr).selector:
+                item = {}
+                href = elem.xpath("@href").get()
+                if href:
+                    item["href"] = href
+                text = elem.xpath("normalize-space(.)").get()
+                if text:
+                    item["title"] = text.strip()
+                if item:
+                    results.append(item)
+            return results
+
+        # Regex mode (legacy, with re.DOTALL fix)
         if items_path.startswith("regex:"):
             pattern = items_path[6:]
             results = []
-            for m in re.finditer(pattern, html_content):
+            for m in re.finditer(pattern, html_content, re.DOTALL):
                 groups = m.groups()
                 if len(groups) >= 2:
                     results.append({"href": groups[0], "title": groups[1]})
@@ -178,13 +217,26 @@ class BrowserCrawler:
         return []
 
     def extract_attr(self, html_content: str, xpath: str, attr: str) -> str:
-        """Extract attribute from HTML element (same logic as HTMLCrawler)"""
+        """Extract attribute from HTML element.
+
+        Supports:
+          - xpath:"<xpath>"  — XPath expression
+          - Legacy XPath-style: //tag[@class='name']
+        """
+        # XPath mode
+        if xpath.startswith("xpath:"):
+            xpath_expr = xpath[6:]
+            parser = HTMLParser(html_content)
+            result = parser.xpath(xpath_expr).get(attr)
+            return result if result else ""
+
+        # Legacy XPath-style (with re.DOTALL fix)
         if "@class=" in xpath:
             match = re.search(r"//(\w+)\[@class=['\"]([^'\"]+)['\"]\]", xpath)
             if match:
                 tag, class_name = match.groups()
                 pattern = rf"<{tag}[^>]*class=['\"]{re.escape(class_name)}['\"][^>]*>"
-                match = re.search(pattern, html_content)
+                match = re.search(pattern, html_content, re.DOTALL)
                 if match:
                     element = match.group(0)
                     attr_match = re.search(rf"{attr}=['\"]([^'\"]+)['\"]", element)
@@ -193,13 +245,26 @@ class BrowserCrawler:
         return ""
 
     def extract_text(self, html_content: str, xpath: str) -> str:
-        """Extract text content from HTML element (same logic as HTMLCrawler)"""
+        """Extract text content from HTML element.
+
+        Supports:
+          - xpath:"<xpath>"  — XPath expression
+          - Legacy XPath-style: //tag[@class='name']//text()
+        """
+        # XPath mode
+        if xpath.startswith("xpath:"):
+            xpath_expr = xpath[6:]
+            parser = HTMLParser(html_content)
+            result = parser.xpath(xpath_expr).text()
+            return result if result else ""
+
+        # Legacy XPath-style (with re.DOTALL fix)
         if "@class=" in xpath:
             match = re.search(r"//(\w+)\[@class=['\"]([^'\"]+)['\"]\]//text\(\)", xpath)
             if match:
                 tag, class_name = match.groups()
                 pattern = rf"<{tag}[^>]*class=['\"]{re.escape(class_name)}['\"][^>]*>([^<]+)</{tag}>"
-                text_match = re.search(pattern, html_content)
+                text_match = re.search(pattern, html_content, re.DOTALL)
                 if text_match:
                     return text_match.group(1).strip()
 
@@ -207,7 +272,7 @@ class BrowserCrawler:
             if simple_match:
                 tag, class_name = simple_match.groups()
                 pattern = rf"<{tag}[^>]*class=['\"]{re.escape(class_name)}['\"][^>]*>([^<]+)</{tag}>"
-                text_match = re.search(pattern, html_content)
+                text_match = re.search(pattern, html_content, re.DOTALL)
                 if text_match:
                     return text_match.group(1).strip()
         return ""
