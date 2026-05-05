@@ -8,6 +8,7 @@ from .crawl_api import APICrawler
 from .crawl_html import HTMLCrawler
 from .crawl_browser import BrowserCrawler
 from .state import StateManager
+from .parsers import UA
 
 
 class InfoCollectorEngine:
@@ -37,6 +38,11 @@ class InfoCollectorEngine:
     def crawl(self, rule: dict) -> list:
         """Execute crawling based on rule"""
         source_type = rule.get("source", {}).get("type", "html")
+        client_mode = rule.get("source", {}).get("client", "desktop")
+
+        # client: browser forces browser crawler regardless of source type
+        if client_mode == "browser":
+            return self._crawl_browser(rule)
 
         if source_type == "api":
             return self._crawl_api(rule)
@@ -60,13 +66,41 @@ class InfoCollectorEngine:
         return items
     
     def _crawl_html(self, rule: dict) -> list:
-        """Crawl HTML source"""
+        """Crawl HTML source with client UA strategy support."""
         source = rule.get("source", {})
         url = source.get("url", "")
         request_headers = rule.get("request", {}).get("headers", {})
+        client_mode = source.get("client", "desktop")  # auto, mobile, desktop, browser
 
-        # Fetch HTML (pass headers from rule if defined)
-        html_content = self.html_crawler.fetch(url, headers=request_headers)
+        # Determine User-Agent based on client strategy
+        user_agent = request_headers.get("User-Agent")  # YAML override takes precedence
+        if not user_agent:
+            if client_mode == "mobile":
+                user_agent = UA.MOBILE
+            elif client_mode == "desktop":
+                user_agent = UA.DESKTOP
+            # browser mode: HTMLCrawler handles its own UA (random from USER_AGENTS list)
+            # auto mode: start with desktop, fallback below if needed
+
+        # Build kwargs for fetch
+        fetch_kwargs = {}
+        if user_agent:
+            fetch_kwargs["headers"] = {**request_headers, "User-Agent": user_agent}
+        elif request_headers:
+            fetch_kwargs["headers"] = request_headers
+
+        # Fetch HTML — auto mode: try desktop first, fallback to mobile if too small
+        MIN_RESPONSE_SIZE = 5000
+        if client_mode == "auto":
+            # Try desktop first
+            desktop_kwargs = {**fetch_kwargs, "headers": {**(fetch_kwargs.get("headers", {})), "User-Agent": UA.DESKTOP}}
+            html_content = self.html_crawler.fetch(url, **desktop_kwargs)
+            if len(html_content) < MIN_RESPONSE_SIZE:
+                # Fallback to mobile
+                mobile_kwargs = {**fetch_kwargs, "headers": {**(fetch_kwargs.get("headers", {})), "User-Agent": UA.MOBILE}}
+                html_content = self.html_crawler.fetch(url, **mobile_kwargs)
+        else:
+            html_content = self.html_crawler.fetch(url, **fetch_kwargs)
         
         # Parse items
         items_path = rule.get("list", {}).get("items_path", "")
