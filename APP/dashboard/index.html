@@ -379,6 +379,163 @@
   .btn-run { background: #276749; }
   .btn-run:hover { background: #1e4d37; }
 
+  /* ── Log Panel (hardware-monitor style) ── */
+  #logPanel {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: 220px;
+    background: #0a0d14;
+    border-top: 2px solid var(--accent);
+    display: none;
+    flex-direction: column;
+    z-index: 1000;
+    font-family: 'Courier New', monospace;
+  }
+  #logPanel.visible { display: flex; }
+  .log-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 14px;
+    background: #12161f;
+    border-bottom: 1px solid #2d3748;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .log-header .log-title { color: var(--accent); font-weight: 600; font-size: 13px; }
+  .log-header .log-status { color: var(--green); font-size: 11px; }
+  .log-header .log-close { margin-left: auto; cursor: pointer; color: var(--text-muted); font-size: 16px; }
+  .log-header .log-close:hover { color: var(--red); }
+  .log-body {
+    flex: 1; overflow-y: auto; padding: 6px 14px;
+    font-size: 12px; line-height: 1.5;
+  }
+  .log-line { display: flex; gap: 8px; }
+  .log-ts { color: #4a5568; flex-shrink: 0; }
+  .log-file { color: #3182ce; flex-shrink: 0; min-width: 80px; }
+  .log-msg { color: #e2e8f0; word-break: break-all; }
+  .log-msg.json-update { color: #48bb78; }
+  .log-msg.error { color: #fc8181; }
+  .log-msg.info { color: #90cdf4; }
+  .log-status-bar {
+    padding: 4px 14px; font-size: 11px;
+    background: #12161f; border-top: 1px solid #2d3748;
+    color: var(--text-muted);
+    display: flex; gap: 16px;
+  }
+  .log-status-bar .live-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--green); display: inline-block;
+    animation: pulse 1.5s infinite;
+  }
+
+  /* ── JSON Expand ── */
+  .json-expand-btn {
+    background: #2d3748; border: 1px solid #4a5568;
+    color: var(--text-muted); cursor: pointer;
+    padding: 2px 7px; border-radius: 4px;
+    font-size: 11px; font-family: inherit;
+    transition: all 0.15s;
+  }
+  .json-expand-btn:hover { background: #3182ce; color: #fff; border-color: #3182ce; }
+  .json-detail-row { display: none; }
+  .json-detail-row.visible { display: table-row; }
+  .json-detail-row td {
+    padding: 10px 14px !important;
+    background: #0f1117 !important;
+    border-bottom: 1px solid #2d3748 !important;
+  }
+  .json-detail-row pre {
+    font-family: 'Courier New', monospace;
+    font-size: 12px; color: #a0aec0;
+    white-space: pre-wrap; word-break: break-all;
+    max-height: 300px; overflow-y: auto;
+    background: #0a0d14; padding: 8px;
+    border-radius: 4px; border: 1px solid #2d3748;
+    margin: 4px 0;
+  }
+  .json-close-btn {
+    background: none; border: none; color: var(--text-muted);
+    cursor: pointer; font-size: 11px; float: right;
+  }
+  .json-close-btn:hover { color: var(--red); }
+
+  /* ── Create Rule Modal ── */
+  #ruleModal {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7); z-index: 2000;
+    align-items: center; justify-content: center;
+  }
+  #ruleModal.visible { display: flex; }
+  .modal-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; width: 900px; max-width: 95vw;
+    max-height: 90vh; display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .modal-header {
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .modal-header h2 { font-size: 16px; color: #fff; }
+  .modal-close { margin-left: auto; background: none; border: none;
+    color: var(--text-muted); font-size: 20px; cursor: pointer; }
+  .modal-close:hover { color: var(--red); }
+  .modal-tabs {
+    display: flex; border-bottom: 1px solid var(--border);
+    padding: 0 20px;
+  }
+  .modal-tab {
+    padding: 10px 16px; font-size: 13px; cursor: pointer;
+    color: var(--text-muted); border: none; background: none;
+    font-family: inherit; border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+  }
+  .modal-tab:hover { color: var(--text); }
+  .modal-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .modal-body {
+    flex: 1; overflow-y: auto; padding: 20px;
+    display: flex; gap: 20px;
+  }
+  .modal-form { flex: 1; min-width: 0; }
+  .modal-preview { flex: 1; min-width: 0; }
+  .modal-preview-label {
+    font-size: 11px; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.05em;
+    margin-bottom: 6px;
+  }
+  .modal-preview pre {
+    font-family: 'Courier New', monospace; font-size: 12px;
+    background: #0a0d14; border: 1px solid var(--border);
+    border-radius: 6px; padding: 12px; color: #a0aec0;
+    white-space: pre-wrap; word-break: break-all;
+    height: 500px; overflow-y: auto; margin: 0;
+  }
+  .modal-footer {
+    padding: 14px 20px; border-top: 1px solid var(--border);
+    display: flex; gap: 10px; justify-content: flex-end;
+  }
+  .form-group { margin-bottom: 14px; }
+  .form-group label {
+    display: block; font-size: 12px; color: var(--text-muted);
+    margin-bottom: 4px; font-weight: 500;
+  }
+  .form-group input, .form-group select, .form-group textarea {
+    width: 100%; background: #2d3748; border: 1px solid #4a5568;
+    color: var(--text); padding: 7px 10px; border-radius: 5px;
+    font-size: 13px; font-family: inherit; box-sizing: border-box;
+  }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+    outline: none; border-color: var(--accent);
+  }
+  .form-group textarea { resize: vertical; min-height: 80px; }
+  .form-row { display: flex; gap: 12px; }
+  .form-row .form-group { flex: 1; }
+  .form-section {
+    font-size: 12px; font-weight: 600; color: var(--accent);
+    text-transform: uppercase; letter-spacing: 0.05em;
+    margin: 16px 0 10px; padding-bottom: 6px;
+    border-bottom: 1px solid #2d3748;
+  }
+
   /* ── Responsive ── */
   @media (max-width: 900px) {
     .main { flex-direction: column; }
@@ -411,6 +568,7 @@
   <div class="header-right">
     <span class="last-updated" id="lastUpdated">—</span>
     <button class="btn btn-run" onclick="refreshAll()">▶ 全部执行</button>
+    <button class="btn" onclick="openLogPanel()">📊 日志流</button>
     <button class="btn" onclick="loadState()">↻ 刷新</button>
   </div>
 </header>
@@ -454,7 +612,7 @@
   <div class="panel-left" id="rulesList">
     <div class="panel-header">
       <span>规则列表</span>
-      <button onclick="loadState()">↻</button>
+      <button onclick="openCreateRule()" title="新建规则">+ 新建</button>
     </div>
     <div id="rulesContainer"></div>
   </div>
@@ -562,6 +720,7 @@ async function loadState() {
 async function refreshAll() {
   if (!confirm('确认执行全部规则？')) return;
   document.getElementById('lastUpdated').textContent = '执行中...';
+  openLogPanel(); // 自动打开日志流监控
   await loadState();
 }
 
@@ -984,7 +1143,7 @@ function renderData() {
 
   table.innerHTML = `<table>
     <thead><tr>
-      <th>#</th><th>标题</th><th>平台</th><th>线索类型</th><th>时间</th><th>公司</th><th>链接</th>
+      <th>#</th><th>标题</th><th>平台</th><th>线索类型</th><th>时间</th><th>公司</th><th>链接</th><th></th>
     </tr></thead>
     <tbody>${
       filtered.slice(0, 200).map((item, i) => {
@@ -999,10 +1158,158 @@ function renderData() {
           <td class="time-cell">${formatTime(item.publish_time || item._collected_at)}</td>
           <td style="color:var(--text-muted);font-size:12px">${item.company || '—'}</td>
           <td class="url"><a href="${url}" target="_blank" title="${url}">${shortUrl(url)}</a></td>
+          <td><button class="json-expand-btn" onclick="toggleJsonDetail(this, ${i})">JSON</button></td>
+        </tr>
+        <tr class="json-detail-row" id="jd${i}">
+          <td colspan="8">
+            <button class="json-close-btn" onclick="toggleJsonDetail(this, ${i})">✕ 关闭</button>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">原始数据</div>
+            <pre>${_escHtml(JSON.stringify(item, null, 2))}</pre>
+          </td>
         </tr>`;
       }).join('')
     }</tbody>
   </table>`;
+}
+
+// ── Rule Create Modal ──────────────────────────────────────
+function openCreateRule() {
+  const modal = document.getElementById('ruleModal');
+  if (!modal) return;
+  modal.classList.add('visible');
+  switchModalTab('form');
+  // 初始化预览
+  document.getElementById('fYamlRaw').value = '';
+  previewRule();
+}
+
+function closeRuleModal() {
+  const modal = document.getElementById('ruleModal');
+  if (modal) modal.classList.remove('visible');
+}
+
+function switchModalTab(tab) {
+  const formTab = document.getElementById('tabForm');
+  const yamlTab = document.getElementById('tabYaml');
+  const panelForm = document.getElementById('panelForm');
+  const panelYaml = document.getElementById('panelYaml');
+  if (tab === 'form') {
+    formTab.classList.add('active'); yamlTab.classList.remove('active');
+    panelForm.style.display = ''; panelYaml.style.display = 'none';
+    syncFormToYaml(); // 用表单内容更新 YAML 文本
+  } else {
+    yamlTab.classList.add('active'); formTab.classList.remove('active');
+    panelYaml.style.display = ''; panelForm.style.display = 'none';
+    syncYamlToPreview(); // 用 YAML 文本更新预览
+  }
+}
+
+// 从表单字段生成 YAML 并更新预览
+function previewRule() {
+  if (document.getElementById('panelYaml').style.display !== 'none') return; // YAML 模式不反向同步
+  syncFormToYaml();
+  syncYamlToPreview();
+}
+
+function syncFormToYaml() {
+  const name = document.getElementById('fName').value.trim();
+  const subject = document.getElementById('fSubject').value.trim();
+  const desc = document.getElementById('fDesc').value.trim();
+  const platform = document.getElementById('fPlatform').value.trim();
+  const type = document.getElementById('fType').value;
+  const client = document.getElementById('fClient').value;
+  const url = document.getElementById('fUrl').value.trim();
+  const ua = document.getElementById('fUa').value.trim();
+  const itemsPath = document.getElementById('fItemsPath').value.trim();
+  const titlePath = document.getElementById('fTitlePath').value.trim();
+  const titleAttr = document.getElementById('fTitleAttr').value.trim();
+  const urlPath = document.getElementById('fUrlPath').value.trim();
+  const timePath = document.getElementById('fTimePath').value.trim();
+  const timeFmt = document.getElementById('fTimeFmt').value.trim();
+  const dedupField = document.getElementById('fDedupField').value;
+  const incremental = document.getElementById('fIncremental').value;
+  const pageUrl = document.getElementById('fPageUrl').value.trim();
+  const pageStart = document.getElementById('fPageStart').value;
+  const pageMax = document.getElementById('fPageMax').value;
+
+  const lines = [];
+  lines.push('# InfoCollector Rule — ' + (name || '新建规则'));
+  lines.push('');
+  if (name) lines.push('name: ' + name);
+  if (subject) lines.push('subject: ' + subject);
+  if (desc) lines.push('description: ' + desc);
+  lines.push('');
+  lines.push('enabled: true');
+  lines.push('');
+  lines.push('source:');
+  lines.push('  type: ' + type);
+  lines.push('  client: ' + client);
+  if (platform) lines.push('  platform: ' + platform);
+  lines.push('  url: ' + (url || 'https://example.com'));
+  if (ua) lines.push('  user_agent: ' + ua);
+  lines.push('  extract:');
+  if (itemsPath) lines.push('    items: ' + itemsPath);
+  if (titlePath) {
+    lines.push('    title:');
+    lines.push('      path: ' + titlePath);
+    if (titleAttr) lines.push('      attr: ' + titleAttr);
+  }
+  if (urlPath) lines.push('    url: ' + urlPath);
+  if (timePath) {
+    lines.push('    publish_time:');
+    lines.push('      path: ' + timePath);
+    if (timeFmt) lines.push('      format: ' + timeFmt);
+  }
+  lines.push('');
+  lines.push('dedup:');
+  lines.push('  incremental: ' + incremental);
+  lines.push('  key_field: ' + dedupField);
+  if (pageUrl) {
+    lines.push('');
+    lines.push('pagination:');
+    lines.push('  url_template: ' + pageUrl);
+    lines.push('  start_page: ' + pageStart);
+    lines.push('  max_pages: ' + pageMax);
+  }
+
+  document.getElementById('fYamlRaw').value = lines.join('\n');
+}
+
+function syncYamlToPreview() {
+  const yamlText = document.getElementById('fYamlRaw').value;
+  document.getElementById('yamlPreview').textContent = yamlText || '// 请在左侧输入 YAML';
+}
+
+async function submitRule() {
+  const yaml = document.getElementById('fYamlRaw').value.trim();
+  if (!yaml) { alert('YAML 内容不能为空'); return; }
+
+  const subject = document.getElementById('fSubject').value.trim() || 'default';
+  const name = document.getElementById('fName').value.trim();
+  const platform = document.getElementById('fPlatform').value.trim() || 'unknown';
+  if (!name) { alert('请填写规则名称'); return; }
+
+  // 文件路径：rules/<subject>/<platform>.yaml
+  const safeName = name.replace(/[^a-zA-Z0-9_\u4e00-\u9fa5-]/g, '_');
+  const rulePath = `rules/${subject}/${platform}.yaml`;
+
+  try {
+    const res = await fetch('/dashboard/api/rules', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({path: rulePath, yaml: yaml}),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert('创建失败: ' + (data.error || res.statusText));
+      return;
+    }
+    closeRuleModal();
+    loadState();
+    alert('规则 "' + name + '" 创建成功！');
+  } catch(e) {
+    alert('网络错误: ' + e.message);
+  }
 }
 
 // ── Utilities ───────────────────────────────────────────
@@ -1032,9 +1339,255 @@ function clueLabel(c) {
   return {policy:'政策', project:'项目', transaction:'交易', registration:'登记', investment:'投资'}[c] || c || '—';
 }
 
+// ── Log Panel: SSE Real-time Stream ───────────────────────
+let _logEs = null;
+let _logPanelVisible = false;
+
+function openLogPanel(ruleName) {
+  const panel = document.getElementById('logPanel');
+  if (!panel) return;
+  panel.classList.add('visible');
+  _logPanelVisible = true;
+  const logBody = document.getElementById('logBody');
+  if (logBody) logBody.innerHTML = '';
+  _addLogLine('info', '正在连接日志流...', '');
+  const url = ruleName
+    ? `/dashboard/api/logs/stream?rule_name=${encodeURIComponent(ruleName)}`
+    : '/dashboard/api/logs/stream';
+  if (_logEs) { _logEs.close(); _logEs = null; }
+  _logEs = new EventSource(url);
+  _logEs.onmessage = function(evt) {
+    try {
+      const d = JSON.parse(evt.data);
+      if (d.type === 'log') {
+        _addLogLine('log', d.line, d.file);
+      } else if (d.type === 'json_update') {
+        _addLogLine('json-update', d.preview, d.file);
+      } else if (d.type === 'info') {
+        _addLogLine('info', d.msg, '');
+      } else if (d.type === 'error') {
+        _addLogLine('error', d.msg, '');
+      } else if (d.event === 'done') {
+        _addLogLine('info', d.msg, '');
+      }
+    } catch(e) {}
+  };
+  _logEs.onerror = function() {
+    _addLogLine('error', 'SSE 连接断开', '');
+    _updateLogStatus('已断开');
+  };
+  _updateLogStatus('● 直播中');
+}
+
+function closeLogPanel() {
+  const panel = document.getElementById('logPanel');
+  if (panel) panel.classList.remove('visible');
+  _logPanelVisible = false;
+  if (_logEs) { _logEs.close(); _logEs = null; }
+}
+
+function _addLogLine(type, msg, file) {
+  const logBody = document.getElementById('logBody');
+  if (!logBody) return;
+  const ts = new Date().toLocaleTimeString('zh-CN', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  const fileSpan = file ? `<span class="log-file">${file}</span>` : '';
+  const msgClass = {info:'info', 'json-update':'json-update', error:'error'}[type] || '';
+  logBody.innerHTML += `<div class="log-line"><span class="log-ts">${ts}</span>${fileSpan}<span class="log-msg ${msgClass}">${_escHtml(msg)}</span></div>`;
+  logBody.scrollTop = logBody.scrollHeight;
+}
+
+function _updateLogStatus(txt) {
+  const el = document.getElementById('logStatusText');
+  if (el) el.textContent = txt;
+}
+
+function toggleJsonDetail(btn, idx) {
+  const row = document.getElementById('jd' + idx);
+  if (!row) return;
+  const isVisible = row.classList.contains('visible');
+  if (isVisible) {
+    row.classList.remove('visible');
+    btn.textContent = 'JSON';
+  } else {
+    // Close any other open detail rows first
+    document.querySelectorAll('.json-detail-row.visible').forEach(r => r.classList.remove('visible'));
+    document.querySelectorAll('.json-expand-btn').forEach(b => b.textContent = 'JSON');
+    row.classList.add('visible');
+    btn.textContent = '收起';
+  }
+}
+
+function _escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
 // ── Boot ────────────────────────────────────────────────
 loadState();
 setInterval(loadState, 30000); // Auto-refresh every 30s
 </script>
+
+<!-- Rule Create Modal -->
+<div id="ruleModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3182ce" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
+      <h2>新建规则</h2>
+      <button class="modal-close" onclick="closeRuleModal()">×</button>
+    </div>
+    <div class="modal-tabs">
+      <button class="modal-tab active" id="tabForm" onclick="switchModalTab('form')">表单向导</button>
+      <button class="modal-tab" id="tabYaml" onclick="switchModalTab('yaml')">YAML 编辑</button>
+    </div>
+    <div class="modal-body">
+      <!-- Form Tab -->
+      <div id="panelForm" class="modal-form">
+        <div class="form-section">基本信息</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>规则名称</label>
+            <input type="text" id="fName" placeholder="如：钛媒体 - 数据要素" oninput="previewRule()">
+          </div>
+          <div class="form-group">
+            <label>主题（Subject）</label>
+            <input type="text" id="fSubject" placeholder="如：数据要素" oninput="previewRule()">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>描述</label>
+          <input type="text" id="fDesc" placeholder="可选，规则描述" oninput="previewRule()">
+        </div>
+
+        <div class="form-section">数据源</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>平台名称</label>
+            <input type="text" id="fPlatform" placeholder="如：钛媒体" oninput="previewRule()">
+          </div>
+          <div class="form-group">
+            <label>类型</label>
+            <select id="fType" onchange="previewRule()">
+              <option value="html">HTML</option>
+              <option value="api">API</option>
+              <option value="browser">Browser(JS)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>客户端策略</label>
+            <select id="fClient" onchange="previewRule()">
+              <option value="auto">自动（auto）</option>
+              <option value="mobile">移动端（mobile）</option>
+              <option value="desktop">桌面端（desktop）</option>
+              <option value="browser">浏览器渲染（browser）</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>URL 模板</label>
+          <input type="text" id="fUrl" placeholder="https://example.com/search?q={keyword}" oninput="previewRule()">
+        </div>
+        <div class="form-group">
+          <label>User-Agent（留空使用默认）</label>
+          <input type="text" id="fUa" placeholder="可选，覆盖默认 UA" oninput="previewRule()">
+        </div>
+
+        <div class="form-section">提取规则</div>
+        <div class="form-group">
+          <label>列表元素路径（CSS/XPath/re）</label>
+          <input type="text" id="fItemsPath" placeholder="css:ul.news-list > li 或 xpath://li[@class='item']" oninput="previewRule()">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>标题提取</label>
+            <input type="text" id="fTitlePath" placeholder="css:h3 a::text 或 xpath://h3/a/text()" oninput="previewRule()">
+          </div>
+          <div class="form-group">
+            <label>标题属性（可选）</label>
+            <input type="text" id="fTitleAttr" placeholder="如：href（提取链接）" oninput="previewRule()">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>链接提取</label>
+          <input type="text" id="fUrlPath" placeholder="css:a::attr(href)" oninput="previewRule()">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>时间字段</label>
+            <input type="text" id="fTimePath" placeholder="css:span.time::text" oninput="previewRule()">
+          </div>
+          <div class="form-group">
+            <label>时间格式</label>
+            <input type="text" id="fTimeFmt" placeholder="如：%Y-%m-%d %H:%M" oninput="previewRule()">
+          </div>
+        </div>
+
+        <div class="form-section">去重与过滤</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>去重字段</label>
+            <select id="fDedupField" onchange="previewRule()">
+              <option value="url">URL</option>
+              <option value="title">标题</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>增量采集</label>
+            <select id="fIncremental" onchange="previewRule()">
+              <option value="true">是</option>
+              <option value="false">否</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-section">分页（可选）</div>
+        <div class="form-group">
+          <label>分页 URL 模板</label>
+          <input type="text" id="fPageUrl" placeholder="https://example.com/page/{page}，留空不分页" oninput="previewRule()">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>起始页</label>
+            <input type="number" id="fPageStart" value="1" oninput="previewRule()">
+          </div>
+          <div class="form-group">
+            <label>最大页数</label>
+            <input type="number" id="fPageMax" value="5" oninput="previewRule()">
+          </div>
+        </div>
+      </div>
+
+      <!-- YAML Tab -->
+      <div id="panelYaml" class="modal-form" style="display:none">
+        <div class="form-group">
+          <label>YAML 内容</label>
+          <textarea id="fYamlRaw" style="min-height:500px;font-family:'Courier New',monospace;font-size:12px" oninput="syncYamlToPreview()"></textarea>
+        </div>
+      </div>
+
+      <!-- Preview -->
+      <div class="modal-preview">
+        <div class="modal-preview-label">YAML 预览</div>
+        <pre id="yamlPreview">// 左侧填写内容，实时生成 YAML</pre>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeRuleModal()">取消</button>
+      <button class="btn btn-run" onclick="submitRule()">创建规则</button>
+    </div>
+  </div>
+</div>
+
+<!-- Log Panel: Real-time SSE stream (hardware-monitor style) -->
+<div id="logPanel">
+  <div class="log-header">
+    <span class="log-title">📊 实时日志</span>
+    <span class="log-status" id="logStatusText">● 直播中</span>
+    <span class="log-close" onclick="closeLogPanel()" title="关闭">✕</span>
+  </div>
+  <div class="log-body" id="logBody"></div>
+  <div class="log-status-bar">
+    <span><span class="live-dot"></span> <span id="logStatusText2">● 直播中</span></span>
+    <span id="logInfo">等待数据...</span>
+  </div>
+</div>
 </body>
 </html>
