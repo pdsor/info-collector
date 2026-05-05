@@ -379,6 +379,75 @@
   .btn-run { background: #276749; }
   .btn-run:hover { background: #1e4d37; }
 
+  /* ── Log Panel (SSE, hardware monitor style) ── */
+  .log-panel {
+    position: fixed;
+    right: 0;
+    top: 0;
+    width: 420px;
+    height: 100vh;
+    background: #0a0a0a;
+    color: #00ff00;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 12px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid #1a1a1a;
+    box-shadow: -4px 0 20px rgba(0,0,0,0.5);
+  }
+  .log-header {
+    padding: 10px 12px;
+    background: #1a1a1a;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #2a2a2a;
+    flex-shrink: 0;
+  }
+  .log-header-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #00ff00;
+    letter-spacing: 0.05em;
+  }
+  .log-header-rule {
+    font-size: 11px;
+    color: #888;
+    margin-left: 8px;
+  }
+  .log-close-btn {
+    background: none;
+    border: 1px solid #333;
+    color: #888;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .log-close-btn:hover { border-color: #00ff00; color: #00ff00; }
+  .log-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 8px;
+  }
+  .log-line {
+    display: flex;
+    gap: 8px;
+    padding: 2px 0;
+    border-bottom: 1px solid #141414;
+    line-height: 1.4;
+  }
+  .log-line:hover { background: #111; }
+  .log-time { color: #555; flex-shrink: 0; font-size: 11px; }
+  .log-file { color: #3a8a3a; flex-shrink: 0; font-size: 11px; max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
+  .log-text { color: #00ff00; word-break: break-all; }
+  .log-info .log-text { color: #88aaff; }
+  .log-error .log-text { color: #ff6666; }
+  .log-starting { color: #ffaa00; padding: 4px 0; font-size: 11px; }
+  .log-done { color: #888; padding: 4px 0; font-size: 11px; text-align: center; }
+
   /* ── Responsive ── */
   @media (max-width: 900px) {
     .main { flex-direction: column; }
@@ -1035,6 +1104,170 @@ function clueLabel(c) {
 // ── Boot ────────────────────────────────────────────────
 loadState();
 setInterval(loadState, 30000); // Auto-refresh every 30s
+
+// ═══════════════════════════════════════════════════════
+// 实时日志面板 (SSE)
+// ═══════════════════════════════════════════════════════
+
+const logPanel = reactive({
+  visible: false,
+  logs: [],
+  eventSource: null,
+  ruleName: ''
+});
+
+function startLogStream(ruleName) {
+  // 如果已有连接，先关闭
+  if (logPanel.eventSource) {
+    logPanel.eventSource.close();
+    logPanel.eventSource = null;
+  }
+
+  logPanel.visible = true;
+  logPanel.logs = [];
+  logPanel.ruleName = ruleName;
+
+  // 显示面板
+  const panel = document.getElementById('logPanel');
+  if (panel) panel.style.display = 'flex';
+
+  document.getElementById('logStarting').style.display = 'block';
+  document.getElementById('logPanelRuleName').textContent = ruleName;
+
+  const encodedRuleName = encodeURIComponent(ruleName);
+  const es = new EventSource(`/api/logs/stream?rule_name=${encodedRuleName}`);
+  logPanel.eventSource = es;
+
+  es.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    const content = document.getElementById('logContent');
+    const starting = document.getElementById('logStarting');
+
+    if (starting && starting.style.display !== 'none') {
+      starting.style.display = 'none';
+    }
+
+    if (data.type === 'info') {
+      addLogLine({ type: 'info', text: data.msg });
+    } else if (data.type === 'error') {
+      addLogLine({ type: 'error', text: '[ERROR] ' + data.msg });
+    } else if (data.type === 'log') {
+      addLogLine({ type: 'log', text: data.line, file: data.file });
+    }
+  };
+
+  es.addEventListener('done', (e) => {
+    addLogLine({ type: 'done', text: '── 日志流结束 ──' });
+    es.close();
+    logPanel.eventSource = null;
+  });
+
+  es.onerror = () => {
+    addLogLine({ type: 'error', text: '[SSE Error] 连接断开' });
+    es.close();
+    logPanel.eventSource = null;
+  };
+}
+
+function stopLogStream() {
+  if (logPanel.eventSource) {
+    logPanel.eventSource.close();
+    logPanel.eventSource = null;
+  }
+  logPanel.visible = false;
+  const panel = document.getElementById('logPanel');
+  if (panel) panel.style.display = 'none';
+}
+
+function addLogLine(entry) {
+  const content = document.getElementById('logContent');
+  if (!content) return;
+
+  // Hide the "连接中..." placeholder once real logs arrive
+  const starting = document.getElementById('logStarting');
+  if (starting && entry.type !== 'info') {
+    starting.style.display = 'none';
+  }
+
+  const time = new Date().toLocaleTimeString('zh-CN', { hour2Digit: true, minute: '2-digit', second: '2-digit' });
+  const line = document.createElement('div');
+  line.className = `log-line log-${entry.type || 'log'}`;
+
+  let html = `<span class="log-time">${time}</span>`;
+  if (entry.file) {
+    html += `<span class="log-file" title="${entry.file}">${entry.file}</span>`;
+  }
+  html += `<span class="log-text">${escapeHtml(entry.text || '')}</span>`;
+  line.innerHTML = html;
+
+  content.appendChild(line);
+
+  // Auto-scroll to bottom
+  content.scrollTop = content.scrollHeight;
+
+  // Keep a max of 500 lines to prevent memory bloat
+  const lines = content.querySelectorAll('.log-line');
+  if (lines.length > 500) {
+    lines[0].remove();
+  }
+}
+
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ═══════════════════════════════════════════════════════
+// 覆写 renderRuleDetail：给"最近执行"表格的每一行加上「运行」按钮
+// ═══════════════════════════════════════════════════════
+
+const _origRenderRuleDetail = renderRuleDetail;
+renderRuleDetail = function(rule) {
+  _origRenderRuleDetail(rule);
+
+  // 在 rule detail 底部插入一个运行按钮（如果规则启用）
+  if (rule && rule.enabled) {
+    const el = document.getElementById('ruleDetail');
+    if (el) {
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-run';
+      btn.style.marginTop = '12px';
+      btn.textContent = '▶ 运行此规则';
+      btn.onclick = () => {
+        // 调用 API 运行规则，然后开启日志流
+        fetch(`/api/rules/${encodeURIComponent(rule.name)}/run`, { method: 'POST' })
+          .then(r => r.json())
+          .then(data => {
+            if (data.task_id) {
+              startLogStream(rule.name);
+            }
+          })
+          .catch(err => {
+            console.error('run rule failed:', err);
+          });
+      };
+      el.appendChild(btn);
+    }
+  }
+};
 </script>
+
+<!-- Log Panel (SSE, hardware monitor style) -->
+<div id="logPanel" class="log-panel" style="display:none">
+  <div class="log-header">
+    <div style="display:flex;align-items:center">
+      <span class="log-header-title">▌ 实时日志</span>
+      <span class="log-header-rule" id="logPanelRuleName"></span>
+    </div>
+    <button class="log-close-btn" onclick="stopLogStream()">✕ 关闭</button>
+  </div>
+  <div class="log-content" id="logContent">
+    <div class="log-starting" id="logStarting">● 连接中...</div>
+  </div>
+</div>
+
 </body>
 </html>
