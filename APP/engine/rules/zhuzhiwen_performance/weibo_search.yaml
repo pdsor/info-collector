@@ -7,6 +7,7 @@ enabled: true
 source:
   platform: "weibo"
   type: "browser"
+  client: browser
   subject: "大衣哥朱之文演出"
   url: "https://s.weibo.com/weibo?q=%E7%9A%AE%E4%B9%8B%E6%96%87%E6%BC%94%E5%87%BA&Refer=SWeibo_box"
 

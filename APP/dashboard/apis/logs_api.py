@@ -4,7 +4,7 @@ Logs API — 实时日志流
 import subprocess
 import json
 import os
-from flask import Blueprint, jsonify, Response, stream_with_context
+from flask import Blueprint, jsonify, Response, stream_with_context, request
 
 logs_bp = Blueprint("logs", __name__)
 
