@@ -10,7 +10,6 @@ class RuleParser:
     
     def load_rule(self, rule_path: str) -> dict:
         """Load a YAML rule file"""
-        # PSEUDOCODE: Read YAML file
         path = Path(rule_path)
         if not path.exists():
             raise FileNotFoundError(f"Rule file not found: {rule_path}")
@@ -20,13 +19,23 @@ class RuleParser:
         
         return rule
     
+    VALID_CLIENT_VALUES = {"auto", "mobile", "desktop", "browser"}
+
     def validate(self, rule: dict) -> bool:
-        """Validate required fields in rule"""
-        # PSEUDOCODE: Check all required fields exist
+        """Validate required fields and client strategy in rule"""
+        # Check required fields
         for field in self.REQUIRED_FIELDS:
             if field not in rule:
                 raise ValueError(f"Missing required field: {field}")
-        
+
+        # Validate client strategy value
+        client = rule.get("source", {}).get("client")
+        if client is not None and client not in self.VALID_CLIENT_VALUES:
+            raise ValueError(
+                f"Invalid client strategy: '{client}'. "
+                f"Must be one of: {', '.join(sorted(self.VALID_CLIENT_VALUES))}"
+            )
+
         return True
     
     def get_source_type(self, rule: dict) -> str:

@@ -53,116 +53,112 @@ def tail_log(log_name):
 
 @logs_bp.route("/stream", methods=["GET"])
 def stream_logs():
-    """GET /api/logs/stream — SSE 实时推送最新日志
+    """GET /api/logs/stream?rule_name=<name> — SSE 实时推送日志（监控 run-all 或指定规则执行）
+
     Query params:
-      - rule_name: 可选，指定规则名称，读取 engine/data/<rule_name>/ 下最新输出文件
-      - 无 rule_name 时: 读取 engine/logs/ 下最新 .log 文件（原有行为）
+      - rule_name: 可选，监控 engine/data/<rule_name>/ 下最新输出文件
+      - 不传 rule_name: 监控 engine/logs/ 下最新 .log 文件
     """
     import time
-    from flask import request
-
-    rule_name = request.args.get("rule_name", "")
+    rule_name = _args_get(request, "rule_name", "")
 
     def generate():
         last_mtime = 0.0
         last_size = 0
-        last_content_hash = ""  # 用于检测文件内容变化
+        last_content_hash = ""
+        import hashlib
 
-        # 当 rule_name 指定时，读取 engine/data/<rule_name>/ 下的最新输出
-        if rule_name:
-            import hashlib
-            data_dir = os.path.join(ENGINE_DIR, "data", rule_name)
-            yield f"data: {json.dumps({'type': 'info', 'msg': f'监控输出: {rule_name}'})}\n\n"
+        def hash_file_content(path):
+            try:
+                with open(path, "rb") as f:
+                    return hashlib.md5(f.read(8192)).hexdigest()
+            except Exception:
+                return ""
 
-            while True:
-                try:
-                    if not os.path.exists(data_dir):
-                        time.sleep(1)
-                        continue
-
-                    # 找到最新的 .json 文件
-                    json_files = [f for f in os.listdir(data_dir) if f.endswith(".json")]
-                    if not json_files:
-                        time.sleep(1)
-                        continue
-
-                    latest_file = sorted(
-                        json_files,
-                        key=lambda f: os.path.getmtime(os.path.join(data_dir, f)),
-                        reverse=True
-                    )[0]
-                    fpath = os.path.join(data_dir, latest_file)
-                    stat = os.stat(fpath)
-
-                    # 检测文件是否有变化
-                    content = ""
-                    if stat.st_size > 0:
-                        try:
-                            content = open(fpath, "r", encoding="utf-8", errors="replace").read()
-                            content_hash = hashlib.md5(content.encode()).hexdigest()
-                        except Exception:
-                            content_hash = ""
-
-                        if content_hash != last_content_hash:
-                            last_content_hash = content_hash
-                            # 发送新内容（截取前 200 字符作为摘要）
-                            for line in content.splitlines():
-                                if line.strip():
-                                    preview = line.strip()[:200]
-                                    yield f"data: {json.dumps({'type': 'log', 'line': preview, 'file': latest_file})}\n\n"
-                        last_size = stat.st_size
-                        last_mtime = stat.st_mtime
-
-                    time.sleep(1)
-                except GeneratorExit:
-                    break
-                except Exception as e:
-                    yield f"data: {json.dumps({'type': 'error', 'msg': str(e)})}\n\n"
-                    break
-
-            # 任务结束时发送 done 事件
-            yield f"event: done\ndata: {json.dumps({'type': 'done', 'msg': '日志流结束'})}\n\n"
-
-        else:
-            # 原有行为: 读取 engine/logs/*.log
-            last_pos = 0
-            logs_dir = os.path.join(ENGINE_DIR, "logs")
-
-            def get_latest_log():
-                if not os.path.exists(logs_dir):
+        def get_monitor_target():
+            """返回要监控的文件路径，无则返回 None"""
+            if rule_name:
+                # 监控 engine/data/<rule_name>/ 下最新 .json 文件
+                data_dir = os.path.join(ENGINE_DIR, "data", rule_name)
+                if not os.path.isdir(data_dir):
+                    return None
+                files = [f for f in os.listdir(data_dir) if f.endswith(".json")]
+                if not files:
+                    return None
+                files.sort(key=lambda f: os.path.getmtime(os.path.join(data_dir, f)), reverse=True)
+                return os.path.join(data_dir, files[0])
+            else:
+                # 监控 engine/logs/ 下最新 .log 文件
+                logs_dir = os.path.join(ENGINE_DIR, "logs")
+                if not os.path.isdir(logs_dir):
                     return None
                 files = [f for f in os.listdir(logs_dir) if f.endswith(".log")]
                 if not files:
                     return None
                 files.sort(key=lambda f: os.path.getmtime(os.path.join(logs_dir, f)), reverse=True)
-                return files[0]
+                return os.path.join(logs_dir, files[0])
 
-            latest = get_latest_log()
-            if latest:
-                yield f"data: {json.dumps({'type': 'info', 'msg': f'监控日志: {latest}'})}\n\n"
-            else:
-                yield f"data: {json.dumps({'type': 'info', 'msg': '暂无日志文件'})}\n\n"
+        def tail_file(path, last_pos=0):
+            """读取文件新增内容，返回 (new_content, new_pos)"""
+            try:
+                size = os.path.getsize(path)
+                if size == 0:
+                    return "", 0
+                if size > last_pos:
+                    with open(path, "r", encoding="utf-8", errors="replace") as f:
+                        f.seek(last_pos)
+                        new_content = f.read()
+                        return new_content, size
+                return "", last_pos
+            except Exception:
+                return "", last_pos
 
-            while True:
-                try:
-                    latest = get_latest_log()
-                    if latest:
-                        fpath = os.path.join(logs_dir, latest)
-                        size = os.path.getsize(fpath)
-                        if size > last_pos:
-                            with open(fpath, "r", encoding="utf-8", errors="replace") as f:
-                                f.seek(last_pos)
-                                new_lines = f.readlines()
-                                last_pos = size
-                                for line in new_lines:
-                                    if line.strip():
-                                        yield f"data: {json.dumps({'type': 'log', 'line': line.rstrip(), 'file': latest})}\n\n"
+        target = get_monitor_target()
+        if target:
+            label = os.path.basename(os.path.dirname(target)) + "/" + os.path.basename(target)
+            yield f"data: {json.dumps({'type': 'info', 'msg': f'监控: {label}'})}\n\n"
+        else:
+            yield f"data: {json.dumps({'type': 'info', 'msg': '暂无日志文件，等待数据...'})}\n\n"
+
+        sent_header = False
+        while True:
+            try:
+                target = get_monitor_target()
+                if not target:
                     time.sleep(1)
-                except GeneratorExit:
-                    break
-                except Exception as e:
-                    yield f"data: {json.dumps({'type': 'error', 'msg': str(e)})}\n\n"
-                    break
+                    continue
+
+                if rule_name:
+                    # JSON 文件：检查 mtime 或内容变化
+                    mtime = os.path.getmtime(target)
+                    content_hash = hash_file_content(target)
+                    if content_hash != last_content_hash or mtime > last_mtime:
+                        last_mtime = mtime
+                        last_content_hash = content_hash
+                        try:
+                            with open(target, "r", encoding="utf-8") as f:
+                                raw = f.read()
+                            # 推送文件内容片段（最多前 500 字符）
+                            preview = raw[:500] + ("...[已截断]" if len(raw) > 500 else "")
+                            yield f"data: {json.dumps({'type': 'json_update', 'file': os.path.basename(target), 'preview': preview})}\n\n"
+                        except Exception:
+                            pass
+                else:
+                    # .log 文件：tail 新行
+                    new_content, last_size = tail_file(target, last_size)
+                    if new_content:
+                        for line in new_content.rstrip("\n").split("\n"):
+                            if line.strip():
+                                yield f"data: {json.dumps({'type': 'log', 'line': line, 'file': os.path.basename(target)})}\n\n"
+
+                time.sleep(1)
+            except GeneratorExit:
+                break
+            except Exception as e:
+                yield f"data: {json.dumps({'type': 'error', 'msg': str(e)})}\n\n"
+                break
+
+        yield f"data: {json.dumps({'event': 'done', 'msg': '日志流结束'})}\n\n"
 
     return Response(
         stream_with_context(generate()),
@@ -172,3 +168,7 @@ def stream_logs():
             "X-Accel-Buffering": "no",
         },
     )
+
+
+def _args_get(req, key, default=""):
+    return req.args.get(key, default)

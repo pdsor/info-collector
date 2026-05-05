@@ -1,0 +1,451 @@
+{
+  "rules": {
+    "巨潮资讯 - 数据要素相关公告": {
+      "name": "巨潮资讯 - 数据要素相关公告",
+      "version": "1.0.0",
+      "description": "从巨潮资讯网搜索数据要素相关上市公司公告，适合追踪数据资产入表、数据产品登记等线索",
+      "subject": "数据要素",
+      "platform": "cninfo",
+      "source_type": "api",
+      "url": "https://www.cninfo.com.cn/new/fulltextSearch/full",
+      "enabled": true,
+      "rule_path": "/root/info-collector/APP/engine/rules/数据要素/cninfo_data_value_search.yaml",
+      "registered_at": "2026-04-30T18:52:48.818525",
+      "last_run_at": null,
+      "last_run_status": null,
+      "last_collected": 0,
+      "last_dedup_filtered": 0,
+      "last_error": null,
+      "total_runs": 0,
+      "total_collected": 0
+    },
+    "钛媒体 - 数据要素相关文章": {
+      "name": "钛媒体 - 数据要素相关文章",
+      "version": "1.0.2",
+      "description": "从钛媒体官网抓取数据要素相关文章列表，适合追踪数据行业动态、政策解读、应用案例",
+      "subject": "数据要素",
+      "platform": "tmtpost",
+      "source_type": "html",
+      "url": "https://www.tmtpost.com/",
+      "enabled": true,
+      "rule_path": "/root/info-collector/APP/engine/rules/数据要素/tmtpost_data_articles.yaml",
+      "registered_at": "2026-04-30T19:43:02.998846",
+      "last_run_at": "2026-04-30T19:43:05.019309",
+      "last_run_status": "success",
+      "last_collected": 0,
+      "last_dedup_filtered": 14,
+      "last_error": null,
+      "total_runs": 1,
+      "total_collected": 0
+    },
+    "集成测试规则": {
+      "name": "集成测试规则",
+      "version": "1.0.0",
+      "description": "",
+      "subject": "测试",
+      "platform": "test_platform",
+      "source_type": "api",
+      "url": "",
+      "enabled": true,
+      "rule_path": "/tmp/tmpg035o0yq/test_rule.yaml",
+      "registered_at": "2026-05-04T08:21:41.839248",
+      "last_run_at": "2026-05-04T08:21:41.849593",
+      "last_run_status": "success",
+      "last_collected": 2,
+      "last_dedup_filtered": 0,
+      "last_error": null,
+      "total_runs": 1,
+      "total_collected": 2
+    }
+  },
+  "executions": [
+    {
+      "execution_id": "exec_20260504082141_集成测试规则",
+      "rule_name": "集成测试规则",
+      "status": "success",
+      "started_at": "2026-05-04T08:21:41.839868",
+      "finished_at": "2026-05-04T08:21:41.849593",
+      "duration_sec": 0.0,
+      "collected": 2,
+      "dedup_filtered": 0,
+      "error": null,
+      "output_path": "/tmp/tmpg035o0yq/output/test_20260504.json"
+    },
+    {
+      "execution_id": "exec_20260504052628_集成测试规则",
+      "rule_name": "集成测试规则",
+      "status": "success",
+      "started_at": "2026-05-04T05:26:28.843900",
+      "finished_at": "2026-05-04T05:26:28.855003",
+      "duration_sec": 0.0,
+      "collected": 2,
+      "dedup_filtered": 0,
+      "error": null,
+      "output_path": "/tmp/tmptwedy2ie/output/test_20260504.json"
+    },
+    {
+      "execution_id": "exec_20260504052229_集成测试规则",
+      "rule_name": "集成测试规则",
+      "status": "success",
+      "started_at": "2026-05-04T05:22:29.801808",
+      "finished_at": "2026-05-04T05:22:29.814410",
+      "duration_sec": 0.0,
+      "collected": 2,
+      "dedup_filtered": 0,
+      "error": null,
+      "output_path": "/tmp/tmpgc68ha1s/output/test_20260504.json"
+    },
+    {
+      "execution_id": "exec_20260502205059_集成测试规则",
+      "rule_name": "集成测试规则",
+      "status": "success",
+      "started_at": "2026-05-02T20:50:59.385630",
+      "finished_at": "2026-05-02T20:50:59.397317",
+      "duration_sec": 0.0,
+      "collected": 2,
+      "dedup_filtered": 0,
+      "error": null,
+      "output_path": "/tmp/tmpjn5jvej9/output/test_20260502.json"
+    },
+    {
+      "execution_id": "exec_20260502111630_集成测试规则",
+      "rule_name": "集成测试规则",
+      "status": "success",
+      "started_at": "2026-05-02T11:16:30.005101",
+      "finished_at": "2026-05-02T11:16:30.016547",
+      "duration_sec": 0.0,
+      "collected": 2,
+      "dedup_filtered": 0,
+      "error": null,
+      "output_path": "/tmp/tmpfxnkx2hn/output/test_20260502.json"
+    },
+    {
+      "execution_id": "exec_20260502111515_集成测试规则",
+      "rule_name": "集成测试规则",
+      "status": "success",
+      "started_at": "2026-05-02T11:15:15.405998",
+      "finished_at": "2026-05-02T11:15:15.418576",
+      "duration_sec": 0.0,
+      "collected": 2,
+      "dedup_filtered": 0,
+      "error": null,
+      "output_path": "/tmp/tmpe182ws5s/output/test_20260502.json"
+    },
+    {
+      "execution_id": "exec_20260502105751_集成测试规则",
+      "rule_name": "集成测试规则",
+      "status": "success",
+      "started_at": "2026-05-02T10:57:51.801497",
+      "finished_at": "2026-05-02T10:57:51.814625",
+      "duration_sec": 0.0,
+      "collected": 2,
+      "dedup_filtered": 0,
+      "error": null,
+      "output_path": "/tmp/tmp3q7v055r/output/test_20260502.json"
+    },
+    {
+      "execution_id": "exec_20260502105656_集成测试规则",
+      "rule_name": "集成测试规则",
+      "status": "success",
+      "started_at": "2026-05-02T10:56:56.629299",
+      "finished_at": "2026-05-02T10:56:56.639783",
+      "duration_sec": 0.0,
+      "collected": 2,
+      "dedup_filtered": 0,
+      "error": null,
+      "output_path": "/tmp/tmp92s9g4zg/output/test_20260502.json"
+    },
+    {
+      "execution_id": "exec_20260502105507_集成测试规则",
+      "rule_name": "集成测试规则",
+      "status": "success",
+      "started_at": "2026-05-02T10:55:07.732776",
+      "finished_at": "2026-05-02T10:55:07.742997",
+      "duration_sec": 0.0,
+      "collected": 2,
+      "dedup_filtered": 0,
+      "error": null,
+      "output_path": "/tmp/tmprrlkmrju/output/test_20260502.json"
+    },
+    {
+      "execution_id": "exec_20260502104659_集成测试规则",
+      "rule_name": "集成测试规则",
+      "status": "success",
+      "started_at": "2026-05-02T10:46:59.675217",
+      "finished_at": "2026-05-02T10:46:59.687428",
+      "duration_sec": 0.0,
+      "collected": 2,
+      "dedup_filtered": 0,
+      "error": null,
+      "output_path": "/tmp/tmp8zwz0270/output/test_20260502.json"
+    },
+    {
+      "execution_id": "exec_20260502103748_集成测试规则",
+      "rule_name": "集成测试规则",
+      "status": "success",
+      "started_at": "2026-05-02T10:37:48.505527",
+      "finished_at": "2026-05-02T10:37:48.515668",
+      "duration_sec": 0.0,
+      "collected": 2,
+      "dedup_filtered": 0,
+      "error": null,
+      "output_path": "/tmp/tmpuwut6r46/output/test_20260502.json"
+    },
+    {
+      "execution_id": "exec_20260502055125_集成测试规则",
+      "rule_name": "集成测试规则",
+      "status": "success",
+      "started_at": "2026-05-02T05:51:25.510111",
+      "finished_at": "2026-05-02T05:51:25.519924",
+      "duration_sec": 0.0,
+      "collected": 2,
+      "dedup_filtered": 0,
+      "error": null,
+      "output_path": "/tmp/tmpke7uywkz/output/test_20260502.json"
+    },
+    {
+      "execution_id": "exec_20260430194303_钛媒体 - 数据要素相关文章",
+      "rule_name": "钛媒体 - 数据要素相关文章",
+      "status": "success",
+      "started_at": "2026-04-30T19:43:03.000413",
+      "finished_at": "2026-04-30T19:43:05.019309",
+      "duration_sec": 2.0,
+      "collected": 0,
+      "dedup_filtered": 14,
+      "error": null,
+      "output_path": "/APP/engine/output/数据要素/tmtpost/tmtpost_data_articles_20260430.json"
+    },
+    {
+      "execution_id": "exec_20260430184617_钛媒体 - 数据要素相关文章",
+      "rule_name": "钛媒体 - 数据要素相关文章",
+      "status": "success",
+      "started_at": "2026-04-30T18:46:17.688779",
+      "finished_at": "2026-04-30T18:46:19.816790",
+      "duration_sec": 2.1,
+      "collected": 0,
+      "dedup_filtered": 14,
+      "error": null,
+      "output_path": "/APP/engine/output/数据要素/tmtpost/tmtpost_data_articles_20260430.json"
+    },
+    {
+      "execution_id": "exec_20260430184035_钛媒体 - 数据要素相关文章",
+      "rule_name": "钛媒体 - 数据要素相关文章",
+      "status": "success",
+      "started_at": "2026-04-30T18:40:35.585003",
+      "finished_at": "2026-04-30T18:40:36.654327",
+      "duration_sec": 1.1,
+      "collected": 2,
+      "dedup_filtered": 12,
+      "error": null,
+      "output_path": "/APP/engine/output/数据要素/tmtpost/tmtpost_data_articles_20260430.json"
+    },
+    {
+      "execution_id": "exec_20260430184034_巨潮资讯 - 数据要素相关公告",
+      "rule_name": "巨潮资讯 - 数据要素相关公告",
+      "status": "success",
+      "started_at": "2026-04-30T18:40:34.760632",
+      "finished_at": "2026-04-30T18:40:35.580939",
+      "duration_sec": 0.8,
+      "collected": 0,
+      "dedup_filtered": 6,
+      "error": null,
+      "output_path": "/APP/engine/output/数据要素/cninfo/cninfo_data_value_20260430.json"
+    },
+    {
+      "execution_id": "exec_20260430164013_集成测试规则",
+      "rule_name": "集成测试规则",
+      "status": "success",
+      "started_at": "2026-04-30T16:40:13.262553",
+      "finished_at": "2026-04-30T16:40:13.274444",
+      "duration_sec": 0.0,
+      "collected": 2,
+      "dedup_filtered": 0,
+      "error": null,
+      "output_path": "/tmp/tmpn4rbjb4k/output/test_20260430.json"
+    },
+    {
+      "execution_id": "exec_20260430163929_钛媒体 - 数据要素相关文章",
+      "rule_name": "钛媒体 - 数据要素相关文章",
+      "status": "success",
+      "started_at": "2026-04-30T16:39:29.356461",
+      "finished_at": "2026-04-30T16:39:30.049162",
+      "duration_sec": 0.7,
+      "collected": 1,
+      "dedup_filtered": 13,
+      "error": null,
+      "output_path": "/APP/engine/output/数据要素/tmtpost/tmtpost_data_articles_20260430.json"
+    },
+    {
+      "execution_id": "exec_20260430163928_巨潮资讯 - 数据要素相关公告",
+      "rule_name": "巨潮资讯 - 数据要素相关公告",
+      "status": "success",
+      "started_at": "2026-04-30T16:39:28.061618",
+      "finished_at": "2026-04-30T16:39:29.352002",
+      "duration_sec": 1.3,
+      "collected": 0,
+      "dedup_filtered": 6,
+      "error": null,
+      "output_path": "/APP/engine/output/数据要素/cninfo/cninfo_data_value_20260430.json"
+    },
+    {
+      "execution_id": "exec_20260430163637_巨潮资讯 - 数据要素相关公告",
+      "rule_name": "巨潮资讯 - 数据要素相关公告",
+      "status": "success",
+      "started_at": "2026-04-30T16:36:37.472879",
+      "finished_at": "2026-04-30T16:36:37.976153",
+      "duration_sec": 0.5,
+      "collected": 0,
+      "dedup_filtered": 6,
+      "error": null,
+      "output_path": "/APP/engine/output/数据要素/cninfo/cninfo_data_value_20260430.json"
+    },
+    {
+      "execution_id": "exec_20260430162943_钛媒体 - 数据要素相关文章",
+      "rule_name": "钛媒体 - 数据要素相关文章",
+      "status": "success",
+      "started_at": "2026-04-30T16:29:43.668584",
+      "finished_at": "2026-04-30T16:29:44.410350",
+      "duration_sec": 0.7,
+      "collected": 14,
+      "dedup_filtered": 0,
+      "error": null,
+      "output_path": "/APP/engine/output/tmtpost/tmtpost_data_articles_20260430.json"
+    },
+    {
+      "execution_id": "exec_20260430162942_巨潮资讯 - 数据要素相关公告",
+      "rule_name": "巨潮资讯 - 数据要素相关公告",
+      "status": "success",
+      "started_at": "2026-04-30T16:29:42.904502",
+      "finished_at": "2026-04-30T16:29:43.663483",
+      "duration_sec": 0.8,
+      "collected": 6,
+      "dedup_filtered": 0,
+      "error": null,
+      "output_path": "/APP/engine/output/cninfo/cninfo_data_value_20260430.json"
+    },
+    {
+      "execution_id": "exec_20260430162323_集成测试规则",
+      "rule_name": "集成测试规则",
+      "status": "success",
+      "started_at": "2026-04-30T16:23:23.394900",
+      "finished_at": "2026-04-30T16:23:23.407148",
+      "duration_sec": 0.0,
+      "collected": 2,
+      "dedup_filtered": 0,
+      "error": null,
+      "output_path": "/tmp/tmpqc28i32_/output/test_20260430.json"
+    },
+    {
+      "execution_id": "exec_20260430162238_集成测试规则",
+      "rule_name": "集成测试规则",
+      "status": "success",
+      "started_at": "2026-04-30T16:22:38.942078",
+      "finished_at": "2026-04-30T16:22:38.953675",
+      "duration_sec": 0.0,
+      "collected": 2,
+      "dedup_filtered": 0,
+      "error": null,
+      "output_path": "/tmp/tmpwla7caak/output/test_20260430.json"
+    },
+    {
+      "execution_id": "exec_20260430162202_集成测试规则",
+      "rule_name": "集成测试规则",
+      "status": "success",
+      "started_at": "2026-04-30T16:22:02.366124",
+      "finished_at": "2026-04-30T16:22:02.379234",
+      "duration_sec": 0.0,
+      "collected": 2,
+      "dedup_filtered": 0,
+      "error": null,
+      "output_path": "/tmp/tmpn_j76xz_/output/test_20260430.json"
+    },
+    {
+      "execution_id": "exec_20260430162036_集成测试规则",
+      "rule_name": "集成测试规则",
+      "status": "success",
+      "started_at": "2026-04-30T16:20:36.383089",
+      "finished_at": "2026-04-30T16:20:36.394259",
+      "duration_sec": 0.0,
+      "collected": 2,
+      "dedup_filtered": 0,
+      "error": null,
+      "output_path": "/APP/engine/output/测试/test_platform/test_20260430.json"
+    },
+    {
+      "execution_id": "exec_20260430161620_集成测试规则",
+      "rule_name": "集成测试规则",
+      "status": "failed",
+      "started_at": "2026-04-30T16:16:20.478678",
+      "finished_at": "2026-04-30T16:16:20.489235",
+      "duration_sec": 0.0,
+      "collected": 0,
+      "dedup_filtered": 0,
+      "error": "ValueError: Rule '集成测试规则' has no 'subject' field. Each rule must declare a subject.",
+      "output_path": ""
+    },
+    {
+      "execution_id": "exec_20260430154211_集成测试规则",
+      "rule_name": "集成测试规则",
+      "status": "success",
+      "started_at": "2026-04-30T15:42:11.305177",
+      "finished_at": "2026-04-30T15:42:11.318542",
+      "duration_sec": 0.0,
+      "collected": 2,
+      "dedup_filtered": 0,
+      "error": null,
+      "output_path": "/tmp/tmprvphp762/output/test_20260430.json"
+    },
+    {
+      "execution_id": "exec_20260430154001_钛媒体 - 数据要素相关文章",
+      "rule_name": "钛媒体 - 数据要素相关文章",
+      "status": "success",
+      "started_at": "2026-04-30T15:40:01.149840",
+      "finished_at": "2026-04-30T15:40:02.022591",
+      "duration_sec": 0.9,
+      "collected": 14,
+      "dedup_filtered": 0,
+      "error": null,
+      "output_path": "/APP/engine/output/tmtpost/tmtpost_data_articles_20260430.json"
+    },
+    {
+      "execution_id": "exec_20260430154000_巨潮资讯 - 数据要素相关公告",
+      "rule_name": "巨潮资讯 - 数据要素相关公告",
+      "status": "success",
+      "started_at": "2026-04-30T15:40:00.436035",
+      "finished_at": "2026-04-30T15:40:01.146210",
+      "duration_sec": 0.7,
+      "collected": 6,
+      "dedup_filtered": 0,
+      "error": null,
+      "output_path": "/APP/engine/output/cninfo/cninfo_data_value_20260430.json"
+    }
+  ],
+  "errors": [
+    {
+      "rule_name": "集成测试规则",
+      "execution_id": "exec_20260430161620_集成测试规则",
+      "error": "ValueError: Rule '集成测试规则' has no 'subject' field. Each rule must declare a subject.",
+      "occurred_at": "2026-04-30T16:16:20.489235"
+    }
+  ],
+  "stats": {
+    "total_collected": 79,
+    "total_runs": 30,
+    "total_failed": 1
+  },
+  "subjects": {
+    "测试": {
+      "display_name": "测试",
+      "rule_names": [
+        "集成测试规则"
+      ]
+    },
+    "数据要素": {
+      "display_name": "数据要素",
+      "rule_names": [
+        "巨潮资讯 - 数据要素相关公告",
+        "钛媒体 - 数据要素相关文章"
+      ]
+    }
+  }
+}
