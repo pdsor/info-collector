@@ -3,6 +3,8 @@ import requests
 import re
 from datetime import datetime
 
+from .parsers import JSONParser
+
 
 class APICrawler:
     """Crawler for API-based data sources"""
@@ -41,19 +43,10 @@ class APICrawler:
     
     def parse_items(self, response_data: dict, items_path: str) -> list:
         """Parse items from API response using JSONPath-like syntax"""
-        # PSEUDOCODE: Simple JSONPath implementation
-        # items_path format: "$.announcements[*]"
-        
-        if items_path.startswith("$."):
-            # Extract key path
-            path_parts = items_path[2:].split("[*]")[0].split(".")
-            data = response_data
-            for part in path_parts:
-                if part:
-                    data = data.get(part, [])
-            return data if isinstance(data, list) else []
-        
-        return response_data.get("data", [])
+        # Support both "$.announcements[*]" and "announcements" formats
+        if not items_path:
+            return response_data.get("data", [])
+        return JSONParser.find(response_data, items_path)
     
     def extract_fields(self, item: dict, field_defs: list) -> dict:
         """Extract fields from item based on field definitions"""
@@ -87,16 +80,8 @@ class APICrawler:
     
     def _get_json_path(self, data: dict, path: str) -> str:
         """Get value from dict using JSONPath-like syntax"""
-        # Simple implementation for format: $.key.subkey
-        if path.startswith("$."):
-            path = path[2:]
-        
-        parts = path.split(".")
-        value = data
-        for part in parts:
-            if part:
-                value = value.get(part, "")
-        return value
+        # Support both "$.key.subkey" and "key.subkey" formats
+        return JSONParser.find_one(data, path, default="")
     
     def transform_value(self, value, transform: str) -> str:
         """Apply transformation to value"""
