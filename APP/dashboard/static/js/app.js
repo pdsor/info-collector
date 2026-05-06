@@ -30,9 +30,9 @@ const DashboardHome = {
 
         const totalCount = computed(() => {
             let total = 0;
-            for (const subject of Object.values(stats.value)) {
-                for (const count of Object.values(subject)) {
-                    total += count;
+            for (const platforms of Object.values(stats.value)) {
+                for (const info of Object.values(platforms)) {
+                    total += typeof info === 'object' && info !== null ? (info.count || 0) : (info || 0);
                 }
             }
             return total;
@@ -59,8 +59,8 @@ const DashboardHome = {
       <div v-for="(platforms, subject) in stats" :key="subject" class="subject-row">
         <h3>{{ subject }}</h3>
         <div class="platform-tags">
-          <span v-for="(count, platform) in platforms" :key="platform" class="platform-tag">
-            {{ platform }}: {{ count }}
+          <span v-for="(info, platform) in platforms" :key="platform" class="platform-tag">
+            {{ platform }}: {{ typeof info === 'object' ? info.count : info }}
           </span>
         </div>
       </div>

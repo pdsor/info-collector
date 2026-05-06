@@ -196,7 +196,8 @@ body {
 .data-table tr:hover td { background: var(--card-hover); }
 
 /* ── Badges / Status Pills ── */
-.badge {
+.badge,
+.status-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -208,25 +209,31 @@ body {
   white-space: nowrap;
 }
 
-.badge-success {
+.badge-success,
+.status-badge.success,
+.status-badge.on {
   background: var(--green-glow);
   color: var(--green);
   border-color: var(--green-dim);
 }
 
-.badge-disabled {
+.badge-disabled,
+.status-badge.disabled,
+.status-badge.off {
   background: rgba(90,122,154,0.08);
   color: var(--text-muted);
   border-color: var(--border-dim);
 }
 
-.badge-running {
+.badge-running,
+.status-badge.running {
   background: var(--yellow-glow);
   color: var(--yellow);
   border-color: rgba(255,184,0,0.3);
 }
 
-.badge-failed {
+.badge-failed,
+.status-badge.failed {
   background: var(--red-glow);
   color: var(--red);
   border-color: rgba(255,51,102,0.3);
@@ -566,6 +573,120 @@ select option { background: var(--card); }
 
 /* ── Dashboard Home ── */
 .dashboard-home { display: flex; flex-direction: column; gap: 0; }
+
+/* ── Section Headings ── */
+.card h2 { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+.card p { color: var(--text-muted); font-size: 13px; margin-bottom: 14px; }
+.card h3 { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 10px; padding: 12px 16px 0; }
+.card h3:first-child { padding-top: 0; }
+
+/* ── Subject Row ── */
+.subject-row {
+  background: var(--card);
+  border-bottom: 1px solid var(--border-dim);
+  padding: 0;
+}
+
+/* ── Rule Editor ── */
+.rule-editor { }
+.rule-count { margin-left: auto; font-size: 12px; color: var(--text-muted); font-family: var(--font-mono); }
+
+/* ── Form Row ── */
+.form-row { display: flex; gap: 14px; margin-bottom: 0; }
+.form-row .form-group { flex: 1; }
+
+/* ── Message ── */
+.msg {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  margin-bottom: 12px;
+  font-weight: 500;
+}
+.msg.success { background: var(--green-glow); color: var(--green); border: 1px solid var(--green-dim); }
+.msg.error { background: var(--red-glow); color: var(--red); border: 1px solid rgba(255,51,102,0.2); }
+
+/* ── Data Preview ── */
+.data-preview { }
+.data-info { font-size: 13px; color: var(--text-muted); margin: 12px 0; }
+.data-info strong { color: var(--accent); }
+.data-item {
+  background: var(--card);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+.data-item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.data-item-header:hover { background: var(--card-hover); }
+.expand-icon { color: var(--text-muted); font-size: 10px; flex-shrink: 0; width: 14px; }
+.data-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: var(--border-dim);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.data-chip strong { color: var(--text); font-weight: 600; }
+.data-item-detail {
+  padding: 0 14px 12px;
+}
+.data-item-detail pre {
+  background: #060910;
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 11px;
+  color: #9BB8D8;
+  font-family: var(--font-mono);
+  overflow-x: auto;
+  max-height: 300px;
+  overflow-y: auto;
+  line-height: 1.6;
+}
+
+/* ── Log Viewer ── */
+.log-viewer { }
+.log-list { display: flex; flex-direction: column; gap: 4px; }
+.log-item {
+  padding: 10px 14px;
+  background: var(--card);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.1s;
+}
+.log-item:hover { border-color: var(--border); background: var(--card-hover); }
+.log-item.active { border-color: var(--accent); background: var(--accent-glow); }
+.log-name { font-size: 13px; color: var(--text); font-family: var(--font-mono); }
+.log-meta { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+
+/* ── Terminal Log Line ── */
+.term-line { padding: 2px 0; }
+.term-line.info,
+.term-line.done { color: var(--accent); }
+.term-line.log { color: #9BB8D8; }
+.term-line.error { color: var(--red); }
+
+/* ── Cron Manager ── */
+.cron-manager { }
 
 /* ── Inline code ── */
 code {
