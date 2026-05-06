@@ -123,8 +123,31 @@ def run_task_async(task_id: int, cmd: list, task_name: str, trigger_type: str, r
     error_message = ""
     start = time_mod.time()
 
+    # 确保 task_logs 表存在
+    try:
+        conn_mig = sqlite3.connect(DB_PATH)
+        conn_mig.executescript(open(os.path.join(os.path.dirname(__file__), "..", "migrations", "002_task_logs.sql")).read())
+        conn_mig.close()
+    except Exception:
+        pass
+
     for raw_line in proc.stdout:
         event = parse_event_line(raw_line)
+
+        # 持久化事件到 task_logs 表
+        if event:
+            try:
+                conn2 = sqlite3.connect(DB_PATH)
+                cur2 = conn2.cursor()
+                cur2.execute(
+                    "INSERT INTO task_logs (task_id, event_json) VALUES (?, ?)",
+                    (task_id, raw_line.strip())
+                )
+                conn2.commit()
+                conn2.close()
+            except Exception:
+                pass
+
         if not event:
             continue
 
@@ -341,6 +364,25 @@ def get_task(task_id):
     if not row:
         return jsonify({"error": "Task not found"}), 404
     return jsonify(dict(row))
+
+
+@tasks_bp.route("/<int:task_id>/logs", methods=["GET"])
+def get_task_logs(task_id):
+    """GET /api/tasks/<task_id>/logs — 获取任务的全部日志事件（NDJSON）"""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT event_json FROM task_logs WHERE task_id = ? ORDER BY id", (task_id,))
+    rows = cur.fetchall()
+    conn.close()
+
+    def generate():
+        for row in rows:
+            yield row["event_json"] + "\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="application/x-ndjson",
+    )
 
 
 # ── 供外部模块调用的统一入口 ─────────────────────────────────

@@ -29,7 +29,7 @@ import os
 
 # ── Venv Guard ──────────────────────────────────────────────
 _VENV_PATH = os.path.join(os.path.dirname(__file__), ".venv", "bin", "python")
-if sys.executable != _VENV_PATH and os.path.exists(os.path.join(os.path.dirname(__file__), ".venv")):
+if os.path.realpath(sys.executable) != os.path.realpath(_VENV_PATH) and os.path.exists(os.path.join(os.path.dirname(__file__), ".venv")):
     print("ERROR: 请使用虚拟环境运行此脚本。", file=sys.stderr)
     print("正确方式: ./venv.sh run python engine_cli.py [...]\n或激活虚拟环境: source .venv/bin/activate", file=sys.stderr)
     sys.exit(1)
