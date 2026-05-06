@@ -2,8 +2,9 @@
 
 This module provides a dual-routing BrowserCrawler that delegates to:
   - PlaywrightCrawler (for Playwright-based rendering)
-  - Crawl4AICrawler (for Crawl4AI-based rendering, future)
+  - Crawl4AICrawler (for Crawl4AI-based rendering)
 """
+from typing import Optional
 from .crawlers import PlaywrightCrawler, Crawl4AICrawler
 
 
@@ -11,21 +12,47 @@ class BrowserCrawler:
     """Dual-routing crawler that delegates to PlaywrightCrawler or Crawl4AICrawler.
     
     Args:
-        crawler_type: "playwright" (default) or "crawl4ai" (future)
+        client: "playwright" (default) or "crawl4ai" or None (auto-detect, defaults to playwright)
     """
     
-    def __init__(self, crawler_type: str = "playwright"):
-        self._crawler_type = crawler_type
-        if crawler_type == "playwright":
-            self._impl = PlaywrightCrawler()
-        elif crawler_type == "crawl4ai":
-            self._impl = Crawl4AICrawler()
-        else:
-            raise ValueError(f"Unknown crawler type: {crawler_type}")
+    def __init__(self, client: str = None):
+        """client: "playwright" (default) or "crawl4ai" or None (auto-detect)"""
+        self._client = client or "playwright"
+        self._impl: Optional[object] = None
+        self._impl_type: Optional[str] = None
+        self._ensure_impl()
+    
+    def _ensure_impl(self):
+        """Lazy init based on current _client"""
+        if self._impl_type != self._client:
+            if self._client == "playwright":
+                self._impl = PlaywrightCrawler()
+            elif self._client == "crawl4ai":
+                self._impl = Crawl4AICrawler()
+            else:
+                raise ValueError(f"Unknown client: {self._client}")
+            self._impl_type = self._client
+    
+    def switch_client(self, client: str):
+        """Switch crawler implementation (closes old one first)"""
+        if self._client == client:
+            return
+        if self._impl is not None:
+            self._impl.close()
+        self._client = client
+        self._impl = None
+        self._impl_type = None
+        self._ensure_impl()
     
     @property
     def crawler_type(self) -> str:
-        return self._crawler_type
+        """Backward compatible alias for _client."""
+        return self._client
+    
+    @property
+    def client(self) -> str:
+        """Current client type."""
+        return self._client
     
     def fetch(self, url: str, render_config: dict = None) -> str:
         """Fetch page using browser, return HTML after JS rendering.
@@ -62,6 +89,30 @@ class BrowserCrawler:
         """Extract fields from HTML based on field definitions"""
         return self._impl.extract_fields(html_content, field_defs)
     
+    def extract_with_llm(self, url: str, prompt: str, schema: dict = None, strategy: str = "llm", render_config: dict = None):
+        """Extract structured content using LLM (only supported by crawl4ai client).
+        
+        Args:
+            url: URL to crawl
+            prompt: Instruction for LLM extraction
+            schema: Schema dict for structured extraction (optional)
+            strategy: "llm" (default) or "cosine" semantic filtering
+            render_config: Browser rendering config (same keys as fetch())
+        
+        Returns:
+            LLM extracted content
+            
+        Raises:
+            NotImplementedError: If called on playwright client
+        """
+        if not hasattr(self._impl, 'extract_with_llm'):
+            raise NotImplementedError(
+                f"extract_with_llm is not supported by {self._client} client. "
+                "Use 'crawl4ai' client to enable LLM extraction."
+            )
+        return self._impl.extract_with_llm(url, prompt, schema, strategy, render_config)
+    
     def close(self):
         """Cleanup crawler resources"""
-        self._impl.close()
+        if self._impl is not None:
+            self._impl.close()

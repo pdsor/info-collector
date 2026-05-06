@@ -19,7 +19,8 @@ class RuleParser:
         
         return rule
     
-    VALID_CLIENT_VALUES = {"auto", "mobile", "desktop", "browser"}
+    VALID_CLIENT_VALUES = {"auto", "mobile", "desktop", "browser", "crawl4ai"}
+    VALID_EXTRACTION_STRATEGIES = {"llm", "cosine"}
 
     def validate(self, rule: dict) -> bool:
         """Validate required fields and client strategy in rule"""
@@ -28,13 +29,33 @@ class RuleParser:
             if field not in rule:
                 raise ValueError(f"Missing required field: {field}")
 
-        # Validate client strategy value
-        client = rule.get("source", {}).get("client")
+        # Validate top-level client field (engine layer support)
+        client = rule.get("client")
         if client is not None and client not in self.VALID_CLIENT_VALUES:
             raise ValueError(
                 f"Invalid client strategy: '{client}'. "
                 f"Must be one of: {', '.join(sorted(self.VALID_CLIENT_VALUES))}"
             )
+
+        # Validate client strategy value in source
+        source_client = rule.get("source", {}).get("client")
+        if source_client is not None and source_client not in self.VALID_CLIENT_VALUES:
+            raise ValueError(
+                f"Invalid client strategy: '{source_client}'. "
+                f"Must be one of: {', '.join(sorted(self.VALID_CLIENT_VALUES))}"
+            )
+
+        # Validate source.extraction if enabled
+        extraction = rule.get("source", {}).get("extraction", {})
+        if extraction.get("enabled"):
+            if "prompt" not in extraction:
+                raise ValueError("source.extraction.enabled is True but prompt is missing")
+            strategy = extraction.get("strategy")
+            if strategy is not None and strategy not in self.VALID_EXTRACTION_STRATEGIES:
+                raise ValueError(
+                    f"Invalid extraction strategy: '{strategy}'. "
+                    f"Must be one of: {', '.join(sorted(self.VALID_EXTRACTION_STRATEGIES))}"
+                )
 
         return True
     
@@ -49,3 +70,7 @@ class RuleParser:
     def get_field_definitions(self, rule: dict) -> list:
         """Get field definitions from rule"""
         return rule.get("list", {}).get("fields", [])
+
+    def get_extraction_config(self, rule: dict) -> dict | None:
+        """Get extraction config from rule"""
+        return rule.get("source", {}).get("extraction")

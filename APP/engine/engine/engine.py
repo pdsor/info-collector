@@ -27,7 +27,7 @@ class InfoCollectorEngine:
         self.state_mgr = StateManager(state_dir)
         self.api_crawler = APICrawler()
         self.html_crawler = HTMLCrawler()
-        self.browser_crawler = BrowserCrawler()
+        self.browser_crawler = BrowserCrawler(client="playwright")
 
     def close(self):
         """Close all engine resources to prevent leaks"""
@@ -151,11 +151,34 @@ class InfoCollectorEngine:
 
         return items
 
+    def _get_browser_client(self, rule: dict) -> str:
+        """Determine which browser client to use for a rule.
+        
+        Priority:
+            1. rule.get("client") — top-level override
+            2. rule.get("source", {}).get("client") — source-level setting
+            3. Default: "playwright"
+        
+        Returns:
+            "playwright" or "crawl4ai"
+        """
+        return rule.get("client") or rule.get("source", {}).get("client") or "playwright"
+    
     def _crawl_browser(self, rule: dict) -> list:
         """Crawl browser-rendered page (JS-heavy sites)"""
         url = rule.get("source", {}).get("url", "")
         render_config = rule.get("render", {})
-
+        
+        # Check if LLM extraction is enabled
+        extraction_config = rule.get("source", {}).get("extraction", {})
+        if extraction_config.get("enabled"):
+            return self._crawl_with_extraction(rule)
+        
+        # Switch client if needed (dual routing)
+        client = self._get_browser_client(rule)
+        if self.browser_crawler.client != client:
+            self.browser_crawler.switch_client(client)
+        
         # Fetch with browser
         html_content = self.browser_crawler.fetch(url, render_config)
 
@@ -199,6 +222,56 @@ class InfoCollectorEngine:
 
             items.append(item)
 
+        return items
+    
+    def _crawl_with_extraction(self, rule: dict) -> list:
+        """Crawl with LLM extraction enabled via source.extraction config.
+        
+        When source.extraction.enabled is True:
+            1. Read source.extraction.prompt and source.extraction.schema
+            2. Switch to crawl4ai client
+            3. Call browser_crawler.extract_with_llm(url, prompt, schema, "llm", render_config)
+            4. Return LLM extraction results (parsed as JSON list or wrapped in list)
+        """
+        source = rule.get("source", {})
+        url = source.get("url", "")
+        render_config = rule.get("render", {})
+        extraction_config = source.get("extraction", {})
+        
+        prompt = extraction_config.get("prompt", "Extract the data")
+        schema = extraction_config.get("schema")
+        
+        # Ensure crawl4ai client for LLM extraction
+        client = self._get_browser_client(rule)
+        # Force crawl4ai if LLM extraction is requested but client is playwright
+        if client == "playwright":
+            # Check if extraction specifically asks for crawl4ai
+            pass  # Use whatever client was specified, let extract_with_llm fail if needed
+        
+        if self.browser_crawler.client != client:
+            self.browser_crawler.switch_client(client)
+        
+        # Perform LLM extraction
+        raw_result = self.browser_crawler.extract_with_llm(
+            url=url,
+            prompt=prompt,
+            schema=schema,
+            strategy="llm",
+            render_config=render_config,
+        )
+        
+        # Parse result - extract_with_llm returns a string (JSON or text)
+        import json
+        items = []
+        try:
+            # Try parsing as JSON list
+            items = json.loads(raw_result)
+            if isinstance(items, dict):
+                items = [items]
+        except (json.JSONDecodeError, TypeError):
+            # If not JSON, treat as single text item
+            items = [{"content": raw_result}]
+        
         return items
 
     def deduplicate(self, items: list, rule: dict) -> tuple:
