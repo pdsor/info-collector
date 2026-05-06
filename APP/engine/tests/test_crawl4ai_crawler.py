@@ -65,7 +65,6 @@ class TestCrawl4AICrawler(unittest.TestCase):
             enable_stealth=True,
             viewport_width=1280,
             viewport_height=1080,
-            user_agent=None,
         )
 
     @patch.object(Crawl4AICrawler, "_async_extract_with_llm")

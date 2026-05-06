@@ -20,13 +20,16 @@ class Crawl4AICrawler:
 
     def _build_browser_config(self, config: dict) -> BrowserConfig:
         """Build BrowserConfig from render_config dict."""
-        return BrowserConfig(
-            headless=config.get("headless", True),
-            enable_stealth=config.get("stealth", False) or config.get("anti_bot", False),
-            viewport_width=config.get("viewport_width", 1920),
-            viewport_height=config.get("viewport_height", 1080),
-            user_agent=config.get("user_agent"),
-        )
+        user_agent = config.get("user_agent")
+        browser_kwargs = {
+            "headless": config.get("headless", True),
+            "enable_stealth": config.get("stealth", False) or config.get("anti_bot", False),
+            "viewport_width": config.get("viewport_width", 1920),
+            "viewport_height": config.get("viewport_height", 1080),
+        }
+        if user_agent:
+            browser_kwargs["user_agent"] = user_agent
+        return BrowserConfig(**browser_kwargs)
 
     def _build_crawler_config(self, config: dict) -> CrawlerRunConfig:
         """Build CrawlerRunConfig from render_config dict."""
