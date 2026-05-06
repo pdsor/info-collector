@@ -1,53 +1,8 @@
 const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
 
 // ── API Helper ────────────────────────────────────────────────────────────────
-const API = {
-    base: "/api",
-
-    async get(path) {
-        const r = await fetch(this.base + path);
-        if (!r.ok) throw new Error(await r.text());
-        return r.json();
-    },
-
-    async post(path, body) {
-        const r = await fetch(this.base + path, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body)
-        });
-        if (!r.ok) throw new Error(await r.text());
-        return r.json();
-    },
-
-    async delete(path) {
-        const r = await fetch(this.base + path, { method: "DELETE" });
-        if (!r.ok) throw new Error(await r.text());
-        return r.json();
-    },
-
-    sse(url, handlers) {
-        const es = new EventSource(url);
-        // 普通消息（data: xxx，无 event: name）
-        es.onmessage = (e) => {
-            try {
-                const data = JSON.parse(e.data);
-                // 忽略心跳（由专门监听器处理）
-                if (data.type === 'heartbeat') return;
-                handlers.onData?.(data);
-            } catch {}
-        };
-        // 命名事件：done（任务结束）
-        es.addEventListener('done', (e) => {
-            try {
-                const data = JSON.parse(e.data);
-                handlers.onData?.(data);  // data.type === 'done'
-            } catch {}
-        });
-        es.onerror = (e) => { handlers.onError?.(e); };
-        return es;
-    }
-};
+// API is defined in /static/js/api.js (shared across all components)
+// This file only defines Vue components — import no duplicate API here.
 
 // ── DashboardHome ─────────────────────────────────────────────────────────────
 const DashboardHome = {
