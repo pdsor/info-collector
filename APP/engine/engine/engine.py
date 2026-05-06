@@ -28,7 +28,14 @@ class InfoCollectorEngine:
         self.api_crawler = APICrawler()
         self.html_crawler = HTMLCrawler()
         self.browser_crawler = BrowserCrawler()
-    
+
+    def close(self):
+        """Close all engine resources to prevent leaks"""
+        if self.dedup:
+            self.dedup.close()
+        if self.browser_crawler:
+            self.browser_crawler.close()
+
     def load_rule(self, rule_path: str) -> dict:
         """Load rule from YAML file"""
         rule = self.parser.load_rule(rule_path)

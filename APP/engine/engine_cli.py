@@ -144,22 +144,24 @@ def cmd_run_all(fmt):
     --format=jsonl: JSONL 事件流（Dashboard 专用）
     """
     e = _engine()
+    try:
+        if fmt == "jsonl":
+            def emit(line):
+                click.echo(line)
+            results = e.run_all(RULES_DIR, event_handler=emit)
+            return
 
-    if fmt == "jsonl":
-        def emit(line):
-            click.echo(line)
-        results = e.run_all(RULES_DIR, event_handler=emit)
-        return
-
-    # 原有文本模式
-    print(f"扫描规则目录: {RULES_DIR}")
-    results = e.run_all(RULES_DIR)
-    print(f"\n执行完成，共 {len(results)} 条规则:")
-    for r in results:
-        icon = {"success": "✅", "failed": "❌", "skipped": "⏩"}.get(r["status"], "❓")
-        print(f"  {icon} {r['rule']}: {r['status']}"
-              + (f" | 采集:{r.get('collected', 0)}" if "collected" in r else "")
-              + (f" | 错误:{r.get('error', '')[:60]}" if r.get("error") else ""))
+        # 原有文本模式
+        print(f"扫描规则目录: {RULES_DIR}")
+        results = e.run_all(RULES_DIR)
+        print(f"\n执行完成，共 {len(results)} 条规则:")
+        for r in results:
+            icon = {"success": "✅", "failed": "❌", "skipped": "⏩"}.get(r["status"], "❓")
+            print(f"  {icon} {r['rule']}: {r['status']}"
+                  + (f" | 采集:{r.get('collected', 0)}" if "collected" in r else "")
+                  + (f" | 错误:{r.get('error', '')[:60]}" if r.get("error") else ""))
+    finally:
+        e.close()
 
 
 @cli.command("run")
@@ -171,13 +173,16 @@ def cmd_run(rule_name):
         click.echo(f"错误: 未找到规则 '{rule_name}'", err=True)
         sys.exit(1)
     e = _engine()
-    print(f"执行规则: {rule_name} ({rule_path})")
-    result = e.run(rule_path)
-    icon = {"success": "✅", "failed": "❌", "skipped": "⏩"}.get(result["status"], "❓")
-    print(f"  {icon} 状态: {result['status']}"
-          + (f" | 采集: {result.get('collected', 0)} 条" if "collected" in result else "")
-          + (f" | 去重过滤: {result.get('dedup_filtered', 0)} 条" if "dedup_filtered" in result else "")
-          + (f"\n  错误: {result.get('error', '')}" if result.get("error") else ""))
+    try:
+        print(f"执行规则: {rule_name} ({rule_path})")
+        result = e.run(rule_path)
+        icon = {"success": "✅", "failed": "❌", "skipped": "⏩"}.get(result["status"], "❓")
+        print(f"  {icon} 状态: {result['status']}"
+              + (f" | 采集: {result.get('collected', 0)} 条" if "collected" in result else "")
+              + (f" | 去重过滤: {result.get('dedup_filtered', 0)} 条" if "dedup_filtered" in result else "")
+              + (f"\n  错误: {result.get('error', '')}" if result.get("error") else ""))
+    finally:
+        e.close()
 
 
 @cli.command("rules")
@@ -320,9 +325,9 @@ def run_rule_cmd(rule_path, fmt):
     """
     import time
     start = time.time()
+    e = _engine()
     try:
         full_path = _resolve_rule_path(rule_path)
-        e = _engine()
 
         if fmt == "jsonl":
             # JSONL 模式：engine.run 内部通过 event_handler 逐行输出事件
@@ -357,6 +362,8 @@ def run_rule_cmd(rule_path, fmt):
             click.echo(event_complete(rule_path, new_count=0, duration=duration))
         else:
             click.echo(f"ERROR: {ex}", err=True)
+    finally:
+        e.close()
 
 
 @cli.command("list-logs")
