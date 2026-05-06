@@ -20,6 +20,8 @@ output/
 dedup.db
 *.db
 dashboard.db
+engine/data/
+engine/logs/
 
 # IDE
 .vscode/

@@ -97,10 +97,10 @@ def _count_items_in_file(file_path: str) -> int:
 
 def _get_data_dir():
     """获取 engine/data 目录路径"""
-    return os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-        "engine", "data",
-    )
+    base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    engine_data = os.path.join(base, "engine", "data")
+    os.makedirs(engine_data, exist_ok=True)
+    return engine_data
 
 
 @data_bp.route("/subjects", methods=["GET"])
@@ -111,10 +111,13 @@ def list_subjects():
         return jsonify({"subjects": []})
 
     subjects = []
-    for s in os.listdir(engine_data):
-        s_path = os.path.join(engine_data, s)
-        if os.path.isdir(s_path):
-            subjects.append(s)
+    try:
+        for s in os.listdir(engine_data):
+            s_path = os.path.join(engine_data, s)
+            if os.path.isdir(s_path):
+                subjects.append(s)
+    except OSError:
+        pass
     return jsonify({"subjects": sorted(subjects)})
 
 
@@ -179,7 +182,11 @@ def data_stats():
             if not os.path.isdir(s_path):
                 continue
             stats[subject] = {}
-            for platform in os.listdir(s_path):
+            try:
+                platforms = os.listdir(s_path)
+            except OSError:
+                platforms = []
+            for platform in platforms:
                 p_path = os.path.join(s_path, platform)
                 if not os.path.isdir(p_path):
                     continue

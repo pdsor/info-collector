@@ -249,8 +249,10 @@ class InfoCollectorEngine:
             # Emit start event
             event_handler(event_start(rule_path))
 
-            # Skip if disabled
-            if not rule.get("enabled", True):
+            # Skip if disabled (check both top-level and source-level enabled flag)
+            top_enabled = rule.get("enabled", True)
+            source_enabled = rule.get("source", {}).get("enabled", True)
+            if not top_enabled or not source_enabled:
                 event_handler(event_skip(rule_path, "rule_disabled"))
                 return {
                     "status": "skipped",
