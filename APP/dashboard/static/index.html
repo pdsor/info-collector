@@ -1,28 +1,1596 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>info-collector 看板</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据采集看板 - InfoCollector</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ═══════════════════════════════════════════════════════════
+     HUD Design Tokens — Real-Time Monitoring Theme
+     ═══════════════════════════════════════════════════════════ */
+  :root {
+    --bg:           #090D14;
+    --surface:      #0F1623;
+    --card:         #131C2B;
+    --card-hover:   #172035;
+    --border:       #1E3A5F;
+    --border-dim:   #152238;
+    --text:         #E8F0FE;
+    --text-muted:   #5A7A9A;
+    --text-dim:     #3A5A7A;
+
+    --accent:       #00D4FF;
+    --accent-glow:   rgba(0, 212, 255, 0.15);
+    --accent-dim:    rgba(0, 212, 255, 0.4);
+
+    --green:        #00FF88;
+    --green-glow:   rgba(0, 255, 136, 0.15);
+    --green-dim:    rgba(0, 255, 136, 0.4);
+    --red:          #FF3366;
+    --red-glow:     rgba(255, 51, 102, 0.15);
+    --yellow:       #FFB800;
+    --yellow-glow:  rgba(255, 184, 0, 0.15);
+    --orange:       #FF8C00;
+
+    --font-ui:      'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono:    'JetBrains Mono', 'Courier New', monospace;
+
+    --radius-sm:    4px;
+    --radius:       8px;
+    --radius-lg:    12px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-ui);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .header-logo {
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(135deg, var(--accent), #0066FF);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  header h1 { font-size: 15px; font-weight: 700; color: #fff; letter-spacing: -0.01em; }
+  .header-subtitle { font-size: 11px; color: var(--text-muted); margin-left: 8px; padding-left: 8px; border-left: 1px solid var(--border-dim); }
+
+  /* System Status HUD */
+  .hud-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--card);
+    border: 1px solid var(--border-dim);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .hud-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+    animation: hud-pulse 2s ease-in-out infinite;
+  }
+  .hud-dot.warn { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+  .hud-dot.err  { background: var(--red);    box-shadow: 0 0 6px var(--red); }
+  .hud-dot.off  { background: var(--text-dim); box-shadow: none; animation: none; }
+  @keyframes hud-pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  .header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+  .last-updated { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
+  .btn {
+    background: var(--card);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 6px 14px;
+    border-radius: var(--radius);
+    font-size: 12px;
+    font-family: var(--font-ui);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+  .btn-primary {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+    font-weight: 600;
+  }
+  .btn-primary:hover { background: #33DDFF; border-color: #33DDFF; color: #000; }
+  .btn-run { background: rgba(0,255,136,0.1); border-color: var(--green-dim); color: var(--green); }
+  .btn-run:hover { background: var(--green-glow); border-color: var(--green); }
+
+  /* ── Stats Row (KPI Bar) ── */
+  .kpi-bar {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    background: var(--border-dim);
+    border-bottom: 1px solid var(--border);
+  }
+  .kpi-cell {
+    background: var(--surface);
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    border-left: 1px solid var(--border-dim);
+    position: relative;
+    overflow: hidden;
+  }
+  .kpi-cell::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--accent);
+    opacity: 0.6;
+  }
+  .kpi-cell.success::before { background: var(--green); }
+  .kpi-cell.failed::before  { background: var(--red); }
+  .kpi-cell.accent::before   { background: var(--accent); }
+  .kpi-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  .kpi-value {
+    font-size: 28px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    color: #fff;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+  }
+  .kpi-value.accent { color: var(--accent); }
+  .kpi-value.success { color: var(--green); }
+  .kpi-value.failed  { color: var(--red); }
+  .kpi-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+  /* ── Tab Bar ── */
+  .tab-bar {
+    display: flex;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    gap: 0;
+  }
+  .tab-btn {
+    padding: 12px 20px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-muted);
+    cursor: pointer;
+    border: none;
+    background: none;
+    font-family: var(--font-ui);
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .tab-btn .tab-count {
+    background: var(--border-dim);
+    color: var(--text-muted);
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-weight: 600;
+  }
+  .tab-btn.active .tab-count { background: var(--accent-glow); color: var(--accent); }
+
+  /* ── Main Layout ── */
+  .main { display: flex; height: calc(100vh - 56px - 80px - 48px); overflow: hidden; }
+
+  /* ── Left Panel (Rules) ── */
+  .panel-left {
+    width: 300px;
+    min-width: 300px;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .panel-header {
+    padding: 12px 16px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .panel-header-left { display: flex; align-items: center; gap: 6px; }
+  .panel-header-right { display: flex; align-items: center; gap: 6px; }
+  .rules-scroll { flex: 1; overflow-y: auto; }
+  .rules-scroll::-webkit-scrollbar { width: 4px; }
+  .rules-scroll::-webkit-scrollbar-track { background: transparent; }
+  .rules-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* Subject Group */
+  .subject-group { border-bottom: 1px solid var(--border-dim); }
+  .subject-group-header {
+    padding: 8px 16px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    user-select: none;
+    background: var(--card);
+    transition: all 0.1s;
+  }
+  .subject-group-header:hover { color: var(--text); background: var(--card-hover); }
+  .sg-arrow { font-size: 10px; transition: transform 0.15s; color: var(--text-dim); }
+  .subject-group-header.collapsed .sg-arrow { transform: rotate(-90deg); }
+  .sg-count { background: var(--border-dim); color: var(--text-dim); font-size: 9px; padding: 1px 5px; border-radius: 8px; margin-left: auto; }
+  .subject-rules { overflow: hidden; }
+  .subject-rules.collapsed { display: none; }
+
+  /* Rule Item */
+  .rule-item {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border-dim);
+    cursor: pointer;
+    transition: background 0.1s;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .rule-item:hover { background: var(--card-hover); }
+  .rule-item.selected { background: var(--card-hover); border-left: 2px solid var(--accent); padding-left: 14px; }
+  .rule-item-top { display: flex; align-items: center; gap: 8px; }
+  .rule-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .rule-item.selected .rule-name { color: #fff; }
+
+  /* Status Indicator — pill style */
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .status-pill .dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .status-pill.ok {
+    background: var(--green-glow);
+    color: var(--green);
+    border: 1px solid var(--green-dim);
+  }
+  .status-pill.ok .dot { background: var(--green); box-shadow: 0 0 4px var(--green); animation: hud-pulse 2s infinite; }
+  .status-pill.err {
+    background: var(--red-glow);
+    color: var(--red);
+    border: 1px solid rgba(255,51,102,0.3);
+  }
+  .status-pill.err .dot { background: var(--red); box-shadow: 0 0 4px var(--red); }
+  .status-pill.run {
+    background: var(--yellow-glow);
+    color: var(--yellow);
+    border: 1px solid rgba(255,184,0,0.3);
+  }
+  .status-pill.run .dot { background: var(--yellow); box-shadow: 0 0 4px var(--yellow); animation: hud-pulse 0.8s infinite; }
+  .status-pill.off {
+    background: rgba(90,122,154,0.1);
+    color: var(--text-muted);
+    border: 1px solid var(--border-dim);
+  }
+  .status-pill.off .dot { background: var(--text-dim); }
+
+  .rule-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--text-muted);
+    padding-left: 2px;
+  }
+  .rule-platform {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    background: var(--border-dim);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  .rule-time { margin-left: auto; font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); }
+
+  /* ── Right Panel ── */
+  .panel-right { flex: 1; overflow-y: auto; padding: 0; }
+  .panel-right::-webkit-scrollbar { width: 6px; }
+  .panel-right::-webkit-scrollbar-track { background: transparent; }
+  .panel-right::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ── Rule Detail ── */
+  .rule-detail { padding: 24px; }
+  .detail-header { margin-bottom: 20px; }
+  .detail-title { font-size: 20px; font-weight: 700; color: #fff; margin-bottom: 8px; letter-spacing: -0.02em; }
+  .detail-desc { font-size: 13px; color: var(--text-muted); margin-bottom: 14px; }
+  .detail-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid;
+  }
+  .tag-platform { background: rgba(0,212,255,0.08); color: var(--accent); border-color: var(--accent-dim); }
+  .tag-type { background: rgba(90,122,154,0.1); color: var(--text-muted); border-color: var(--border-dim); }
+  .tag-on  { background: var(--green-glow); color: var(--green); border-color: var(--green-dim); }
+  .tag-off { background: rgba(90,122,154,0.08); color: var(--text-muted); border-color: var(--border-dim); }
+
+  /* KPI Grid */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .kpi-card {
+    background: var(--card);
+    border: 1px solid var(--border-dim);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.15s;
+  }
+  .kpi-card:hover { border-color: var(--border); }
+  .kpi-card::before {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), transparent);
+    opacity: 0.3;
+  }
+  .kpi-card .label { font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; }
+  .kpi-card .value { font-size: 22px; font-weight: 700; font-family: var(--font-mono); color: #fff; letter-spacing: -0.02em; }
+  .kpi-card .sub { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+
+  /* Section */
+  .section { margin-bottom: 28px; }
+  .section-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-dim);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .section-title .section-icon { color: var(--accent); font-size: 14px; }
+  .section-title .count {
+    background: var(--border-dim);
+    color: var(--text-muted);
+    font-size: 10px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    text-align: left;
+    padding: 9px 12px;
+    background: var(--card);
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    border-bottom: 1px solid var(--border);
+  }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--border-dim); vertical-align: middle; }
+  tr:hover td { background: var(--card-hover); }
+  .exec-status { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; }
+  .exec-status.success { color: var(--green); }
+  .exec-status.failed  { color: var(--red); }
+  .exec-status.running { color: var(--yellow); }
+  .exec-status.pending { color: var(--text-muted); }
+  .exec-status.skipped { color: var(--orange); }
+  .time-cell { color: var(--text-muted); font-size: 11px; font-family: var(--font-mono); white-space: nowrap; }
+
+  /* Error List */
+  .error-item {
+    background: var(--card);
+    border: 1px solid rgba(255,51,102,0.2);
+    border-left: 3px solid var(--red);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    margin-bottom: 8px;
+  }
+  .error-rule { font-size: 12px; font-weight: 600; color: var(--red); margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+  .error-rule::before { content: '⚠'; font-size: 11px; }
+  .error-msg { font-size: 12px; color: var(--text-muted); font-family: var(--font-mono); line-height: 1.5; }
+  .error-time { font-size: 10px; color: var(--text-dim); margin-top: 4px; font-family: var(--font-mono); }
+
+  /* Empty State */
+  .empty-state {
+    text-align: center;
+    padding: 60px 24px;
+    color: var(--text-muted);
+    font-size: 14px;
+  }
+  .empty-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.3; }
+  .no-selection {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 400px;
+    color: var(--text-muted);
+    font-size: 14px;
+    gap: 10px;
+  }
+  .no-selection-icon { font-size: 48px; opacity: 0.2; margin-bottom: 8px; }
+
+  /* Data Table */
+  .data-table-wrap { overflow-x: auto; }
+  td.title { max-width: 360px; }
+  td.title a { color: var(--accent); text-decoration: none; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  td.title a:hover { text-decoration: underline; }
+  td.url { max-width: 180px; }
+  td.url a { color: var(--green); text-decoration: none; font-size: 11px; }
+  td.url a:hover { text-decoration: underline; }
+  .clue-tag { display: inline-block; padding: 2px 7px; border-radius: 5px; font-size: 10px; font-weight: 600; }
+  .clue-policy    { background: var(--green-glow); color: var(--green); }
+  .clue-project   { background: var(--yellow-glow); color: var(--yellow); }
+  .clue-transaction { background: rgba(180,100,255,0.1); color: #B464FF; }
+  .clue-registration { background: rgba(0,212,255,0.1); color: var(--accent); }
+  .clue-investment  { background: var(--red-glow); color: var(--red); }
+  .clue-other     { background: var(--border-dim); color: var(--text-muted); }
+
+  /* Toolbar */
+  .toolbar {
+    padding: 10px 24px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .toolbar select, .toolbar input {
+    background: var(--card);
+    border: 1px solid var(--border-dim);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: var(--radius);
+    font-size: 12px;
+    font-family: var(--font-ui);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .toolbar select:focus, .toolbar input:focus { border-color: var(--accent); }
+  .toolbar-left { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .filter-info { font-size: 12px; color: var(--text-muted); margin-left: auto; }
+
+  /* Log Panel */
+  #logPanel {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    height: 240px;
+    background: #060910;
+    border-top: 2px solid var(--accent);
+    display: none;
+    flex-direction: column;
+    z-index: 1000;
+    box-shadow: 0 -4px 32px rgba(0,0,0,0.6);
+  }
+  #logPanel.visible { display: flex; }
+  .log-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 16px;
+    background: #0B1019;
+    border-bottom: 1px solid var(--border-dim);
+    font-size: 12px;
+  }
+  .log-title { color: var(--accent); font-weight: 700; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  .log-status { color: var(--green); font-size: 11px; font-family: var(--font-mono); }
+  .log-close { margin-left: auto; cursor: pointer; color: var(--text-muted); font-size: 18px; padding: 0 4px; }
+  .log-close:hover { color: var(--red); }
+  .log-body { flex: 1; overflow-y: auto; padding: 6px 14px; font-size: 12px; line-height: 1.6; font-family: var(--font-mono); }
+  .log-line { display: flex; gap: 10px; }
+  .log-ts { color: #2A4A6A; flex-shrink: 0; width: 70px; }
+  .log-file { color: var(--accent-dim); flex-shrink: 0; min-width: 90px; font-size: 11px; }
+  .log-msg { color: #9BB8D8; word-break: break-all; }
+  .log-msg.json-update { color: var(--green); }
+  .log-msg.error { color: var(--red); }
+  .log-msg.info { color: var(--accent); }
+  .log-status-bar {
+    padding: 5px 16px; font-size: 11px;
+    background: #0B1019; border-top: 1px solid var(--border-dim);
+    color: var(--text-muted);
+    display: flex; gap: 20px;
+    font-family: var(--font-mono);
+  }
+  .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); display: inline-block; animation: hud-pulse 1.5s infinite; }
+
+  /* JSON Expand */
+  .json-expand-btn {
+    background: var(--card);
+    border: 1px solid var(--border-dim);
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 3px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 10px;
+    font-family: var(--font-mono);
+    transition: all 0.15s;
+  }
+  .json-expand-btn:hover { background: var(--accent-glow); color: var(--accent); border-color: var(--accent-dim); }
+  .json-detail-row { display: none; }
+  .json-detail-row.visible { display: table-row; }
+  .json-detail-row td { padding: 12px 14px !important; background: #060910 !important; border-bottom: 1px solid var(--border-dim) !important; }
+  .json-detail-row pre { font-family: var(--font-mono); font-size: 11px; color: #7A9AB8; white-space: pre-wrap; word-break: break-all; max-height: 280px; overflow-y: auto; background: #0A0F18; padding: 10px; border-radius: var(--radius); border: 1px solid var(--border-dim); margin: 4px 0; }
+  .json-close-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 11px; float: right; padding: 2px 6px; border-radius: 3px; }
+  .json-close-btn:hover { color: var(--red); background: var(--red-glow); }
+
+  /* Rule Modal */
+  #ruleModal {
+    display: none; position: fixed; inset: 0;
+    background: rgba(6,9,16,0.85); z-index: 2000;
+    align-items: center; justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  #ruleModal.visible { display: flex; }
+  .modal-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    width: 960px; max-width: 95vw;
+    max-height: 90vh;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(0,212,255,0.1);
+  }
+  .modal-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px;
+    background: var(--card);
+  }
+  .modal-header h2 { font-size: 16px; font-weight: 700; color: #fff; }
+  .modal-close { margin-left: auto; background: none; border: none; color: var(--text-muted); font-size: 22px; cursor: pointer; line-height: 1; }
+  .modal-close:hover { color: var(--red); }
+  .modal-tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 20px; background: var(--card); }
+  .modal-tab { padding: 11px 18px; font-size: 13px; cursor: pointer; color: var(--text-muted); border: none; background: none; font-family: var(--font-ui); font-weight: 500; border-bottom: 2px solid transparent; transition: all 0.15s; }
+  .modal-tab:hover { color: var(--text); }
+  .modal-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .modal-body { flex: 1; overflow-y: auto; padding: 20px; display: flex; gap: 20px; }
+  .modal-form { flex: 1; min-width: 0; }
+  .modal-preview { flex: 1; min-width: 0; }
+  .modal-preview-label { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .modal-footer { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; background: var(--card); }
+
+  /* Modal Form Styles */
+  .form-section { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin: 16px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border-dim); }
+  .form-row { display: flex; gap: 12px; }
+  .form-group { flex: 1; display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+  .form-group label { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+  .form-group input, .form-group select, .form-group textarea {
+    background: var(--card);
+    border: 1px solid var(--border-dim);
+    color: var(--text);
+    padding: 7px 10px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-family: var(--font-ui);
+    outline: none;
+    transition: border-color 0.15s;
+    width: 100%;
+  }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--accent); background: var(--card-hover); }
+  .form-group textarea { font-family: var(--font-mono); font-size: 11px; min-height: 480px; resize: vertical; }
+  #yamlPreview { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); white-space: pre-wrap; word-break: break-all; background: #060910; padding: 12px; border-radius: var(--radius); border: 1px solid var(--border-dim); min-height: 480px; overflow-y: auto; line-height: 1.6; }
+
+  /* File Protocol Warning */
+  #fileProtocolWarning {
+    display: none;
+    background: rgba(255,51,102,0.08);
+    border-bottom: 1px solid rgba(255,51,102,0.3);
+    padding: 10px 24px;
+    font-size: 12px;
+    color: var(--red);
+    align-items: center;
+    gap: 10px;
+  }
+
+  /* Pulse animation for running status */
+  @keyframes spin-pulse { 0%{transform:rotate(0)} 50%{transform:rotate(180deg)} 100%{transform:rotate(360deg)} }
+  .spin { display: inline-block; animation: spin-pulse 1s linear infinite; font-size: 10px; }
+</style>
 </head>
 <body>
-    <div id="app">
-        <nav class="tab-nav">
-            <button 
-                v-for="tab in tabs" 
-                :key="tab.id"
-                :class="['tab-btn', { active: currentTab === tab.id }]"
-                @click="currentTab = tab.id"
-            >{{ tab.label }}</button>
-        </nav>
-        <main class="content">
-            <component :is="currentComponent" />
-        </main>
+
+<div id="fileProtocolWarning">
+  ⚠ 使用 file:// 协议访问时日志流功能不可用，请通过 http://localhost:5000 访问
+</div>
+
+<!-- ── Header ── -->
+<header>
+  <div class="header-brand">
+    <div class="header-logo">⬡</div>
+    <h1>InfoCollector</h1>
+    <span class="header-subtitle">数据采集合集</span>
+  </div>
+
+  <!-- HUD System Status -->
+  <div class="hud-status" id="hudStatus">
+    <span class="hud-dot" id="hudDot"></span>
+    <span id="hudText">系统正常</span>
+  </div>
+
+  <div class="header-right">
+    <span class="last-updated" id="lastUpdated">—</span>
+    <button class="btn btn-run" onclick="refreshAll()">▶ 全部执行</button>
+    <button class="btn" onclick="openCreateRule()">+ 新建规则</button>
+  </div>
+</header>
+
+<!-- ── KPI Bar ── -->
+<div class="kpi-bar">
+  <div class="kpi-cell accent">
+    <div class="kpi-label">规则总数</div>
+    <div class="kpi-value accent" id="statRules">-</div>
+    <div class="kpi-sub" id="statRulesSub">—</div>
+  </div>
+  <div class="kpi-cell">
+    <div class="kpi-label">累计采集</div>
+    <div class="kpi-value" id="statCollected">-</div>
+    <div class="kpi-sub" id="statRuns">—</div>
+  </div>
+  <div class="kpi-cell success">
+    <div class="kpi-label">成功</div>
+    <div class="kpi-value success" id="statSuccess">-</div>
+  </div>
+  <div class="kpi-cell failed">
+    <div class="kpi-label">失败</div>
+    <div class="kpi-value failed" id="statFailed">-</div>
+  </div>
+</div>
+
+<!-- ── Tab Bar ── -->
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('overview', this)">概览</button>
+  <button class="tab-btn" onclick="switchTab('executions', this)">执行记录 <span class="tab-count" id="execCount">0</span></button>
+  <button class="tab-btn" onclick="switchTab('errors', this)">错误日志 <span class="tab-count" id="errCount">0</span></button>
+  <button class="tab-btn" onclick="switchTab('data', this)">数据查看</button>
+</div>
+
+<!-- ── Main ── -->
+<div class="main">
+  <div class="panel-left">
+    <div class="panel-header">
+      <div class="panel-header-left">
+        <span>⬡</span> 规则列表
+      </div>
+      <div class="panel-header-right">
+        <button class="btn" style="padding:3px 8px;font-size:10px" onclick="openCreateRule()">+</button>
+      </div>
+    </div>
+    <div class="rules-scroll" id="rulesScroll">
+      <div id="rulesContainer"></div>
+    </div>
+  </div>
+
+  <div class="panel-right" id="detailPanel">
+    <div class="no-selection" id="noSelection">
+      <div class="no-selection-icon">◈</div>
+      <div>从左侧选择一个规则</div>
+      <div style="font-size:12px;color:var(--text-dim);margin-top:4px">或点击「全部执行」开始采集</div>
     </div>
 
-    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-    <script src="/static/js/api.js"></script>
-    <script src="/static/js/app.js"></script>
+    <!-- Overview Tab -->
+    <div id="tab-overview" style="display:none">
+      <div class="rule-detail" id="ruleDetail"></div>
+    </div>
+
+    <!-- Executions Tab -->
+    <div id="tab-executions" style="display:none; padding: 20px 24px;">
+      <div class="section">
+        <div class="section-title">
+          <span class="section-icon">▣</span> 最近执行记录
+          <span class="count" id="execCount2">0</span>
+        </div>
+        <div id="execList"></div>
+      </div>
+    </div>
+
+    <!-- Errors Tab -->
+    <div id="tab-errors" style="display:none; padding: 20px 24px;">
+      <div class="section">
+        <div class="section-title">
+          <span class="section-icon">⚠</span> 错误记录
+          <span class="count" id="errCount2">0</span>
+        </div>
+        <div id="errList"></div>
+      </div>
+    </div>
+
+    <!-- Data Tab -->
+    <div id="tab-data" style="display:none">
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <select id="filterPlatform" onchange="renderData()"><option value="">全部平台</option></select>
+          <select id="filterClue" onchange="renderData()">
+            <option value="">全部类型</option>
+            <option value="policy">政策</option>
+            <option value="project">项目</option>
+            <option value="transaction">交易</option>
+            <option value="registration">登记</option>
+            <option value="investment">投资</option>
+          </select>
+          <input type="text" id="filterKeyword" placeholder="搜索标题..." style="width:160px" oninput="renderData()">
+        </div>
+        <span class="filter-info" id="dataSummary"></span>
+      </div>
+      <div class="data-table-wrap" style="padding:16px 24px">
+        <div id="dataTable"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────
+let state = { rules: {}, executions: [], errors: [], subjects: {} };
+let selectedRule = null;
+let currentTab = 'overview';
+let allData = [];
+const STATE_FILE = '/APP/engine/output/state.json';
+
+function isFileProtocol() { return window.location.protocol === 'file:'; }
+
+// ── Init ───────────────────────────────────────────────────
+async function loadState() {
+  try {
+    const res = await fetch(STATE_FILE + '?t=' + Date.now());
+    if (!res.ok) throw new Error('state file not found');
+    state = await res.json();
+    renderStats();
+    renderRulesList();
+    renderCurrentTab();
+    updateHUD();
+    document.getElementById('lastUpdated').textContent = '更新: ' + new Date().toLocaleTimeString('zh-CN');
+    document.getElementById('fileProtocolWarning').style.display = isFileProtocol() ? 'flex' : 'none';
+  } catch(e) {
+    console.error('loadState failed:', e);
+    document.getElementById('lastUpdated').textContent = '加载失败';
+    updateHUD('err');
+  }
+}
+
+async function refreshAll() {
+  if (!confirm('确认执行全部规则？')) return;
+  document.getElementById('lastUpdated').textContent = '执行中...';
+  openLogPanel();
+  await loadState();
+}
+
+// ── HUD Update ──────────────────────────────────────────────
+function updateHUD(status) {
+  const dot = document.getElementById('hudDot');
+  const txt = document.getElementById('hudText');
+  if (!dot || !txt) return;
+  const errors = (state.errors || []).length;
+  const running = (state.executions || []).filter(e => e.status === 'running').length;
+  if (status === 'err' || errors > 0) {
+    dot.className = 'hud-dot err';
+    txt.textContent = errors + ' 个错误';
+  } else if (running > 0) {
+    dot.className = 'hud-dot warn';
+    txt.textContent = '采集中…';
+  } else {
+    dot.className = 'hud-dot';
+    txt.textContent = '系统正常';
+  }
+}
+
+// ── Render Stats ────────────────────────────────────────────
+function renderStats() {
+  const stats = state.stats || {};
+  const rules = Object.values(state.rules || {});
+  const enabled = rules.filter(r => r.enabled).length;
+  const successExec = (state.executions || []).filter(e => e.status === 'success').length;
+  const failedExec  = (state.executions || []).filter(e => e.status === 'failed').length;
+  document.getElementById('statRules').textContent = rules.length;
+  document.getElementById('statRulesSub').textContent = enabled + ' 启用';
+  document.getElementById('statCollected').textContent = stats.total_collected || 0;
+  document.getElementById('statRuns').textContent = (stats.total_runs || 0) + ' 次运行';
+  document.getElementById('statSuccess').textContent = successExec;
+  document.getElementById('statFailed').textContent  = failedExec;
+}
+
+// ── Subject Group State ─────────────────────────────────────
+let collapsedSubjects = new Set();
+function toggleSubject(sub) {
+  if (collapsedSubjects.has(sub)) collapsedSubjects.delete(sub);
+  else collapsedSubjects.add(sub);
+  renderRulesList();
+}
+
+// ── Render Rules List ───────────────────────────────────────
+function renderRulesList() {
+  const container = document.getElementById('rulesContainer');
+  const rules = Object.values(state.rules || {});
+  if (!rules.length) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">□</div><p>暂无规则</p></div>';
+    return;
+  }
+  const bySubject = {};
+  for (const r of rules) {
+    const sub = r.subject || '（无归属）';
+    if (!bySubject[sub]) bySubject[sub] = [];
+    bySubject[sub].push(r);
+  }
+  const order = Object.keys(bySubject).sort((a, b) => {
+    if (a === '（无归属）') return 1;
+    if (b === '（无归属）') return -1;
+    return a.localeCompare(b);
+  });
+  let html = '';
+  for (const sub of order) {
+    const subRules = bySubject[sub].sort((a, b) => b.enabled - a.enabled || (b.last_run_at||'').localeCompare(a.last_run_at||''));
+    const collapsed = collapsedSubjects.has(sub);
+    html += `<div class="subject-group">
+      <div class="subject-group-header${collapsed ? ' collapsed' : ''}" onclick="toggleSubject('${sub.replace(/'/g,"\\'")}')">
+        <span class="sg-arrow">▾</span>
+        <span style="letter-spacing:0.02em">${sub}</span>
+        <span class="sg-count">${subRules.length}</span>
+      </div>
+      <div class="subject-rules${collapsed ? ' collapsed' : ''}">
+        ${subRules.map(r => renderRuleItem(r)).join('')}
+      </div>
+    </div>`;
+  }
+  container.innerHTML = html;
+}
+
+function renderRuleItem(rule) {
+  const last = rule.last_run_status;
+  let pillClass, pillTxt;
+  if (!rule.enabled) { pillClass='off'; pillTxt='已禁用'; }
+  else if (last === 'success') { pillClass='ok'; pillTxt='成功'; }
+  else if (last === 'failed')  { pillClass='err'; pillTxt='失败'; }
+  else if (last === 'running')  { pillClass='run'; pillTxt='运行中'; }
+  else { pillClass='off'; pillTxt='待执行'; }
+
+  const timeAgoStr = rule.last_run_at ? timeAgo(rule.last_run_at) : '从未';
+  const fullName = rule.name || '';
+  const dashIdx = fullName.indexOf(' - ');
+  const sourceName = dashIdx > 0 ? fullName.slice(dashIdx + 3).trim() : fullName;
+  const sel = selectedRule && selectedRule.name === rule.name ? ' selected' : '';
+  return `<div class="rule-item${sel}" data-name="${fullName.replace(/'/g,"\\'")}" onclick="selectRule('${fullName.replace(/'/g,"\\'")}')">
+    <div class="rule-item-top">
+      <span class="rule-name" title="${fullName}">${sourceName}</span>
+      <span class="status-pill ${pillClass}"><span class="dot"></span>${pillTxt}</span>
+    </div>
+    <div class="rule-meta">
+      <span class="rule-platform">${rule.platform || '—'}</span>
+      <span class="rule-time">${timeAgoStr}</span>
+    </div>
+  </div>`;
+}
+
+// ── Select Rule ────────────────────────────────────────────
+function selectRule(name) {
+  const rules = Object.values(state.rules || {});
+  selectedRule = rules.find(r => r.name === name) || null;
+  document.querySelectorAll('.rule-item').forEach(el => el.classList.remove('selected'));
+  if (selectedRule) {
+    const el = document.querySelector(`.rule-item[data-name='${name.replace(/'/g,"\\'")}']`);
+    if (el) el.classList.add('selected');
+  }
+  if (currentTab === 'data') {
+    loadDataFiles().then(renderData);
+  } else {
+    switchTab('overview');
+  }
+}
+
+// ── Tab Switching ───────────────────────────────────────────
+function switchTab(tab, btn) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  else {
+    const btns = document.querySelectorAll('.tab-btn');
+    const m = {overview:0, executions:1, errors:2, data:3};
+    if (m[tab] !== undefined && btns[m[tab]]) btns[m[tab]].classList.add('active');
+  }
+  renderCurrentTab();
+}
+
+function renderCurrentTab() {
+  ['overview','executions','errors','data'].forEach(t => {
+    const el = document.getElementById('tab-' + t);
+    if (el) el.style.display = t === currentTab ? 'block' : 'none';
+  });
+  if (currentTab === 'overview') {
+    document.getElementById('noSelection').style.display = selectedRule ? 'none' : 'flex';
+    document.getElementById('tab-overview').style.display = selectedRule ? 'block' : 'none';
+    if (selectedRule) renderRuleDetail(selectedRule);
+  } else if (currentTab === 'executions') {
+    renderExecutions();
+  } else if (currentTab === 'errors') {
+    renderErrors();
+  } else if (currentTab === 'data') {
+    loadDataFiles().then(renderData);
+  }
+}
+
+// ── Rule Detail ────────────────────────────────────────────
+function renderRuleDetail(rule) {
+  const el = document.getElementById('ruleDetail');
+  const timeAgoStr = rule.last_run_at ? timeAgo(rule.last_run_at) : '从未运行';
+  const lastStatus = rule.last_run_status || 'pending';
+  const statusLabel = {success:'成功', failed:'失败', running:'运行中', pending:'待执行'}[lastStatus] || lastStatus;
+  const statusColor = {success:'var(--green)', failed:'var(--red)', running:'var(--yellow)', pending:'var(--text-muted)'}[lastStatus] || 'var(--text-muted)';
+
+  el.innerHTML = `
+    <div class="detail-header">
+      <div class="detail-title">${rule.name}</div>
+      ${rule.description ? `<div class="detail-desc">${rule.description}</div>` : ''}
+      <div class="detail-tags">
+        ${rule.subject ? `<span class="tag tag-platform">📁 ${rule.subject}</span>` : ''}
+        <span class="tag tag-platform">${rule.platform || '—'}</span>
+        <span class="tag tag-type">${rule.source_type}</span>
+        <span class="tag ${rule.enabled ? 'tag-on' : 'tag-off'}">${rule.enabled ? '✓ 已启用' : '✕ 已禁用'}</span>
+      </div>
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="label">运行次数</div>
+        <div class="value">${rule.total_runs || 0}</div>
+        <div class="sub">次</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">累计采集</div>
+        <div class="value">${rule.total_collected || 0}</div>
+        <div class="sub">条</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">最近采集</div>
+        <div class="value">${rule.last_collected || 0}</div>
+        <div class="sub">条 / ${timeAgoStr}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">最近状态</div>
+        <div class="value" style="font-size:16px;color:${statusColor}">${statusLabel}</div>
+        <div class="sub">${rule.last_dedup_filtered || 0} 条去重</div>
+      </div>
+    </div>
+    ${rule.last_error ? `
+    <div class="section">
+      <div class="section-title" style="color:var(--red)"><span class="section-icon">⚠</span>最近错误</div>
+      <div class="error-item">
+        <div class="error-rule">${rule.name}</div>
+        <div class="error-msg">${rule.last_error}</div>
+      </div>
+    </div>` : ''}
+    <div class="section">
+      <div class="section-title"><span class="section-icon">▣</span>最近执行</div>
+      <table>
+        <thead><tr><th>时间</th><th>状态</th><th>采集</th><th>去重</th><th>耗时</th></tr></thead>
+        <tbody>${
+          (state.executions || [])
+            .filter(e => e.rule_name === rule.name)
+            .slice(0, 10)
+            .map(e => `<tr>
+              <td class="time-cell">${formatTime(e.started_at)}</td>
+              <td><span class="exec-status ${e.status}">${statusDot(e.status)} ${statusLabelMap[e.status] || e.status}</span></td>
+              <td>${e.collected}</td>
+              <td>${e.dedup_filtered}</td>
+              <td class="time-cell">${e.duration_sec ? e.duration_sec + 's' : '—'}</td>
+            </tr>`).join('') || '<tr><td colspan="5" style="color:var(--text-muted)">暂无执行记录</td></tr>'
+        }</tbody>
+      </table>
+    </div>
+  `;
+}
+
+const statusLabelMap = {success:'成功', failed:'失败', running:'运行中', pending:'待执行', skipped:'已跳过'};
+function statusDot(s) {
+  const cls = {success:'dot-success', failed:'dot-failed', running:'dot-running', pending:'dot-pending', skipped:'dot-disabled'}[s] || 'dot-pending';
+  const spinning = s === 'running' ? '<span class="spin">◌</span>' : '';
+  const dotEl = `<span class="status-dot ${cls.replace('dot-','')}" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${ {success:'var(--green)',failed:'var(--red)',running:'var(--yellow)',pending:'var(--text-muted)',skipped:'var(--text-dim)'}[s] || 'var(--text-muted)'};${s==='running'?'animation:hud-pulse 0.8s infinite':s==='success'?'animation:hud-pulse 2s infinite':''}"></span>`;
+  return dotEl + spinning;
+}
+
+// ── Render Executions ───────────────────────────────────────
+function renderExecutions() {
+  const list = (state.executions || []).slice(0, 30);
+  const countEl = document.getElementById('execCount');
+  const countEl2 = document.getElementById('execCount2');
+  if (countEl) countEl.textContent = list.length;
+  if (countEl2) countEl2.textContent = list.length;
+  document.getElementById('execList').innerHTML = list.length ? `<table>
+    <thead><tr><th>规则</th><th>状态</th><th>采集</th><th>去重</th><th>耗时</th><th>开始时间</th></tr></thead>
+    <tbody>${
+      list.map(e => `<tr>
+        <td><div style="font-size:13px;font-weight:500">${e.rule_name}</div></td>
+        <td><span class="exec-status ${e.status}">${statusDot(e.status)} ${statusLabelMap[e.status] || e.status}</span></td>
+        <td>${e.collected}</td>
+        <td>${e.dedup_filtered}</td>
+        <td class="time-cell">${e.duration_sec ? e.duration_sec + 's' : '—'}</td>
+        <td class="time-cell">${formatTime(e.started_at)}</td>
+      </tr>`).join('')
+    }</tbody>
+  </table>` : '<div class="empty-state"><div class="empty-icon">▣</div><p>暂无执行记录</p></div>';
+}
+
+// ── Render Errors ──────────────────────────────────────────
+function renderErrors() {
+  const list = (state.errors || []).slice(0, 30);
+  const countEl = document.getElementById('errCount');
+  const countEl2 = document.getElementById('errCount2');
+  if (countEl) countEl.textContent = list.length;
+  if (countEl2) countEl2.textContent = list.length;
+  document.getElementById('errList').innerHTML = list.length ? list.map(e => `<div class="error-item">
+    <div class="error-rule">${e.rule_name}</div>
+    <div class="error-msg">${e.error}</div>
+    <div class="error-time">${formatTime(e.occurred_at)}</div>
+  </div>`).join('') : '<div class="empty-state"><div class="empty-icon">✓</div><p>暂无错误 ✓</p></div>';
+}
+
+// ── Data Loading ───────────────────────────────────────────
+async function loadDataFiles() {
+  allData = [];
+  const platformSet = new Set();
+  const ruleNameSet = new Set();
+  const platformToRuleName = {};
+  const ruleNameToPlatform = {};
+  for (const rule of Object.values(state.rules || {})) {
+    const name = rule.name || '';
+    const dashIdx = name.indexOf(' - ');
+    const displayPlatform = dashIdx > 0 ? name.slice(0, dashIdx).trim() : '';
+    if (displayPlatform) { platformToRuleName[displayPlatform] = name; ruleNameToPlatform[name] = displayPlatform; }
+    const sysPlatform = rule.platform || '';
+    if (sysPlatform && sysPlatform !== displayPlatform) { platformToRuleName[sysPlatform] = name; }
+  }
+  const subjects = state.subjects || {};
+  const candidatePaths = [];
+  for (const sub of Object.keys(subjects)) {
+    candidatePaths.push(`/APP/engine/output/${encodeURIComponent(sub)}/combined_latest.json`);
+  }
+  candidatePaths.push('/APP/engine/output/combined_latest.json');
+  const seenUrls = new Set();
+  for (const url of candidatePaths) {
+    try {
+      const r = await fetch(url + '?t=' + Date.now());
+      if (!r.ok) continue;
+      const j = await r.json();
+      const sub = j.meta?.subject || 'unknown';
+      for (const item of (j.data || [])) {
+        const itemUrl = item.url || '';
+        if (seenUrls.has(itemUrl)) continue;
+        seenUrls.add(itemUrl);
+        if (!item._rule) item._rule = item._platform ? platformToRuleName[item._platform] || (item.platform && platformToRuleName[item.platform]) || (item._rule || 'unknown') : (item._rule || 'unknown');
+        if (!item._subject) item._subject = sub;
+        if (item._rule && item._rule !== 'unknown') ruleNameSet.add(item._rule);
+        if (item.platform) platformSet.add(item.platform);
+        allData.push(item);
+      }
+    } catch(e) {}
+  }
+  for (const exec of (state.executions || [])) {
+    if (exec.output_path && exec.output_path.endsWith('.json')) {
+      try {
+        const r = await fetch(exec.output_path + '?t=' + Date.now());
+        if (r.ok) {
+          const j = await r.json();
+          const execSub = j.meta?.subject || exec.rule_name;
+          for (const item of (j.data || [])) {
+            const itemUrl = item.url || '';
+            if (seenUrls.has(itemUrl)) continue;
+            seenUrls.add(itemUrl);
+            item._rule = exec.rule_name;
+            item._subject = execSub;
+            ruleNameSet.add(exec.rule_name);
+            if (item.platform) platformSet.add(item.platform);
+            allData.push(item);
+          }
+        }
+      } catch(e) {}
+    }
+  }
+  const sel = document.getElementById('filterPlatform');
+  sel.innerHTML = '<option value="">全部平台</option>';
+  [...platformSet].sort().forEach(p => { sel.innerHTML += `<option value="${p}">${p}</option>`; });
+  return allData;
+}
+
+// ── Render Data ────────────────────────────────────────────
+function renderData() {
+  const platform = document.getElementById('filterPlatform').value;
+  const clue = document.getElementById('filterClue').value;
+  const keyword = document.getElementById('filterKeyword').value.toLowerCase();
+  let filtered = allData;
+  let effectiveRuleFilter = null;
+  if (selectedRule && currentTab === 'data') { effectiveRuleFilter = selectedRule.name; }
+  if (effectiveRuleFilter) filtered = filtered.filter(i => i._rule === effectiveRuleFilter);
+  if (platform) filtered = filtered.filter(i => i.platform === platform);
+  if (clue) filtered = filtered.filter(i => i.clue_type === clue);
+  if (keyword) filtered = filtered.filter(i =>
+    (i.title && i.title.toLowerCase().includes(keyword)) ||
+    (i.company && i.company.toLowerCase().includes(keyword))
+  );
+  const parts = [];
+  if (effectiveRuleFilter) parts.push(`规则: <b>${effectiveRuleFilter}</b>`);
+  else if (platform) parts.push(`平台: <b>${platform}</b>`);
+  if (clue) parts.push(`类型: <b>${clueLabel(clue)}</b>`);
+  if (keyword) parts.push(`关键词: <b>${keyword}</b>`);
+  const filterLabel = parts.length ? parts.join(' · ') + ' · ' : '';
+  document.getElementById('dataSummary').innerHTML = `<span style="font-size:12px;color:var(--text-muted)">${filterLabel}共 <b style="color:var(--text)">${filtered.length}</b> 条 / ${allData.length} 条</span>`;
+  const table = document.getElementById('dataTable');
+  if (!filtered.length) { table.innerHTML = '<div class="empty-state"><div class="empty-icon">□</div><p>暂无数据</p></div>'; return; }
+  table.innerHTML = `<table>
+    <thead><tr><th>#</th><th>标题</th><th>平台</th><th>类型</th><th>时间</th><th>公司</th><th>链接</th><th></th></tr></thead>
+    <tbody>${
+      filtered.slice(0, 200).map((item, i) => {
+        const title = item.title || '—';
+        const url = item.url || '#';
+        const clue = item.clue_type || 'other';
+        return `<tr>
+          <td class="time-cell">${i+1}</td>
+          <td class="title"><a href="${url}" target="_blank" title="${title.replace(/"/g,'&quot;')}">${title}</a></td>
+          <td>${item.platform || '—'}</td>
+          <td><span class="clue-tag clue-${clue}">${clueLabel(clue)}</span></td>
+          <td class="time-cell">${formatTime(item.publish_time || item._collected_at)}</td>
+          <td style="color:var(--text-muted);font-size:12px">${item.company || '—'}</td>
+          <td class="url"><a href="${url}" target="_blank" title="${url}">${shortUrl(url)}</a></td>
+          <td><button class="json-expand-btn" onclick="toggleJsonDetail(this, ${i})">JSON</button></td>
+        </tr>
+        <tr class="json-detail-row" id="jd${i}">
+          <td colspan="8">
+            <button class="json-close-btn" onclick="toggleJsonDetail(this, ${i})">✕ 关闭</button>
+            <div style="font-size:10px;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.1em">原始数据</div>
+            <pre>${_escHtml(JSON.stringify(item, null, 2))}</pre>
+          </td>
+        </tr>`;
+      }).join('')
+    }</tbody>
+  </table>`;
+}
+
+// ── Rule Modal ─────────────────────────────────────────────
+function openCreateRule() {
+  const modal = document.getElementById('ruleModal');
+  if (!modal) return;
+  modal.classList.add('visible');
+  switchModalTab('form');
+  document.getElementById('fYamlRaw').value = '';
+  previewRule();
+}
+function closeRuleModal() {
+  const modal = document.getElementById('ruleModal');
+  if (modal) modal.classList.remove('visible');
+}
+function switchModalTab(tab) {
+  const formTab = document.getElementById('tabForm');
+  const yamlTab = document.getElementById('tabYaml');
+  const panelForm = document.getElementById('panelForm');
+  const panelYaml = document.getElementById('panelYaml');
+  if (tab === 'form') {
+    formTab.classList.add('active'); yamlTab.classList.remove('active');
+    panelForm.style.display = ''; panelYaml.style.display = 'none';
+    syncFormToYaml();
+  } else {
+    yamlTab.classList.add('active'); formTab.classList.remove('active');
+    panelYaml.style.display = ''; panelForm.style.display = 'none';
+    syncYamlToPreview();
+  }
+}
+function previewRule() {
+  if (document.getElementById('panelYaml').style.display !== 'none') return;
+  syncFormToYaml();
+  syncYamlToPreview();
+}
+function syncFormToYaml() {
+  const name = document.getElementById('fName').value.trim();
+  const subject = document.getElementById('fSubject').value.trim();
+  const desc = document.getElementById('fDesc').value.trim();
+  const platform = document.getElementById('fPlatform').value.trim();
+  const type = document.getElementById('fType').value;
+  const client = document.getElementById('fClient').value;
+  const url = document.getElementById('fUrl').value.trim();
+  const ua = document.getElementById('fUa').value.trim();
+  const itemsPath = document.getElementById('fItemsPath').value.trim();
+  const titlePath = document.getElementById('fTitlePath').value.trim();
+  const titleAttr = document.getElementById('fTitleAttr').value.trim();
+  const urlPath = document.getElementById('fUrlPath').value.trim();
+  const timePath = document.getElementById('fTimePath').value.trim();
+  const timeFmt = document.getElementById('fTimeFmt').value.trim();
+  const dedupField = document.getElementById('fDedupField').value;
+  const incremental = document.getElementById('fIncremental').value;
+  const pageUrl = document.getElementById('fPageUrl').value.trim();
+  const pageStart = document.getElementById('fPageStart').value;
+  const pageMax = document.getElementById('fPageMax').value;
+  const lines = [];
+  lines.push('# InfoCollector Rule — ' + (name || '新建规则'));
+  lines.push('');
+  if (name) lines.push('name: ' + name);
+  if (subject) lines.push('subject: ' + subject);
+  if (desc) lines.push('description: ' + desc);
+  lines.push('');
+  lines.push('enabled: true');
+  lines.push('');
+  lines.push('source:');
+  lines.push('  type: ' + type);
+  lines.push('  client: ' + client);
+  if (platform) lines.push('  platform: ' + platform);
+  lines.push('  url: ' + (url || 'https://example.com'));
+  if (ua) lines.push('  user_agent: ' + ua);
+  lines.push('  extract:');
+  if (itemsPath) lines.push('    items: ' + itemsPath);
+  if (titlePath) { lines.push('    title:'); lines.push('      path: ' + titlePath); if (titleAttr) lines.push('      attr: ' + titleAttr); }
+  if (urlPath) lines.push('    url: ' + urlPath);
+  if (timePath) { lines.push('    publish_time:'); lines.push('      path: ' + timePath); if (timeFmt) lines.push('      format: ' + timeFmt); }
+  lines.push('');
+  lines.push('dedup:');
+  lines.push('  incremental: ' + incremental);
+  lines.push('  key_field: ' + dedupField);
+  if (pageUrl) { lines.push(''); lines.push('pagination:'); lines.push('  url_template: ' + pageUrl); lines.push('  start_page: ' + pageStart); lines.push('  max_pages: ' + pageMax); }
+  document.getElementById('fYamlRaw').value = lines.join('\n');
+}
+function syncYamlToPreview() {
+  const yamlText = document.getElementById('fYamlRaw').value;
+  document.getElementById('yamlPreview').textContent = yamlText || '// 请在左侧输入 YAML';
+}
+async function submitRule() {
+  const yaml = document.getElementById('fYamlRaw').value.trim();
+  if (!yaml) { alert('YAML 内容不能为空'); return; }
+  const subject = document.getElementById('fSubject').value.trim() || 'default';
+  const name = document.getElementById('fName').value.trim();
+  const platform = document.getElementById('fPlatform').value.trim() || 'unknown';
+  if (!name) { alert('请填写规则名称'); return; }
+  const safeName = name.replace(/[^a-zA-Z0-9_\u4e00-\u9fa5-]/g, '_');
+  const rulePath = `rules/${subject}/${platform}.yaml`;
+  try {
+    const res = await fetch('/dashboard/api/rules', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({path: rulePath, yaml: yaml}),
+    });
+    const data = await res.json();
+    if (!res.ok) { alert('创建失败: ' + (data.error || res.statusText)); return; }
+    closeRuleModal();
+    loadState();
+    alert('规则 "' + name + '" 创建成功！');
+  } catch(e) { alert('网络错误: ' + e.message); }
+}
+
+// ── Utilities ───────────────────────────────────────────────
+function timeAgo(iso) {
+  if (!iso) return '—';
+  const diff = (Date.now() - new Date(iso)) / 1000;
+  if (diff < 60) return '刚刚';
+  if (diff < 3600) return Math.floor(diff/60) + 'm前';
+  if (diff < 86400) return Math.floor(diff/3600) + 'h前';
+  return Math.floor(diff/86400) + 'd前';
+}
+function formatTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  return d.toLocaleString('zh-CN', {month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'});
+}
+function shortUrl(url) {
+  if (url === '#' || !url) return '—';
+  const u = url.replace(/^https?:\/\//, '');
+  return u.length > 40 ? u.slice(0, 40) + '…' : u;
+}
+function clueLabel(c) {
+  return {policy:'政策', project:'项目', transaction:'交易', registration:'登记', investment:'投资'}[c] || c || '—';
+}
+function _escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function toggleJsonDetail(btn, idx) {
+  const row = document.getElementById('jd' + idx);
+  if (!row) return;
+  const isVisible = row.classList.contains('visible');
+  if (isVisible) {
+    row.classList.remove('visible');
+    btn.textContent = 'JSON';
+  } else {
+    document.querySelectorAll('.json-detail-row.visible').forEach(r => r.classList.remove('visible'));
+    document.querySelectorAll('.json-expand-btn').forEach(b => b.textContent = 'JSON');
+    row.classList.add('visible');
+    btn.textContent = '收起';
+  }
+}
+
+// ── Log Panel ──────────────────────────────────────────────
+let _logEs = null;
+function openLogPanel(ruleName) {
+  const panel = document.getElementById('logPanel');
+  if (!panel) return;
+  panel.classList.add('visible');
+  const logBody = document.getElementById('logBody');
+  if (logBody) logBody.innerHTML = '';
+  _addLogLine('info', '正在连接日志流...', '');
+  const url = ruleName ? `/dashboard/api/logs/stream?rule_name=${encodeURIComponent(ruleName)}` : '/dashboard/api/logs/stream';
+  if (_logEs) { _logEs.close(); _logEs = null; }
+  _logEs = new EventSource(url);
+  _logEs.onmessage = function(evt) {
+    try {
+      const d = JSON.parse(evt.data);
+      if (d.type === 'log') _addLogLine('log', d.line, d.file);
+      else if (d.type === 'json_update') _addLogLine('json-update', d.preview, d.file);
+      else if (d.type === 'info') _addLogLine('info', d.msg, '');
+      else if (d.type === 'error') _addLogLine('error', d.msg, '');
+      else if (d.event === 'done') _addLogLine('info', d.msg, '');
+    } catch(e) {}
+  };
+  _logEs.onerror = function() {
+    _addLogLine('error', 'SSE 连接断开', '');
+    _updateLogStatus('已断开');
+  };
+  _updateLogStatus('● 直播中');
+}
+function closeLogPanel() {
+  const panel = document.getElementById('logPanel');
+  if (panel) panel.classList.remove('visible');
+  if (_logEs) { _logEs.close(); _logEs = null; }
+}
+function _addLogLine(type, msg, file) {
+  const logBody = document.getElementById('logBody');
+  if (!logBody) return;
+  const ts = new Date().toLocaleTimeString('zh-CN', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  const fileSpan = file ? `<span class="log-file">${file}</span>` : '';
+  const msgClass = {info:'info', 'json-update':'json-update', error:'error'}[type] || '';
+  logBody.innerHTML += `<div class="log-line"><span class="log-ts">${ts}</span>${fileSpan}<span class="log-msg ${msgClass}">${_escHtml(msg)}</span></div>`;
+  logBody.scrollTop = logBody.scrollHeight;
+}
+function _updateLogStatus(txt) {
+  const el = document.getElementById('logStatusText');
+  if (el) el.textContent = txt;
+  const el2 = document.getElementById('logStatusText2');
+  if (el2) el2.textContent = txt;
+}
+
+// ── Boot ────────────────────────────────────────────────────
+loadState();
+setInterval(loadState, 30000);
+</script>
+
+<!-- Rule Create Modal -->
+<div id="ruleModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span style="font-size:20px;color:var(--accent)">⬡</span>
+      <h2>新建规则</h2>
+      <button class="modal-close" onclick="closeRuleModal()">×</button>
+    </div>
+    <div class="modal-tabs">
+      <button class="modal-tab active" id="tabForm" onclick="switchModalTab('form')">表单向导</button>
+      <button class="modal-tab" id="tabYaml" onclick="switchModalTab('yaml')">YAML 编辑</button>
+    </div>
+    <div class="modal-body">
+      <!-- Form Tab -->
+      <div id="panelForm" class="modal-form">
+        <div class="form-section">基本信息</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>规则名称</label>
+            <input type="text" id="fName" placeholder="如：钛媒体 - 数据要素" oninput="previewRule()">
+          </div>
+          <div class="form-group">
+            <label>主题（Subject）</label>
+            <input type="text" id="fSubject" placeholder="如：数据要素" oninput="previewRule()">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>描述</label>
+          <input type="text" id="fDesc" placeholder="可选，规则描述" oninput="previewRule()">
+        </div>
+        <div class="form-section">数据源</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>平台名称</label>
+            <input type="text" id="fPlatform" placeholder="如：钛媒体" oninput="previewRule()">
+          </div>
+          <div class="form-group">
+            <label>类型</label>
+            <select id="fType" onchange="previewRule()">
+              <option value="html">HTML</option>
+              <option value="api">API</option>
+              <option value="browser">Browser(JS)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>客户端策略</label>
+            <select id="fClient" onchange="previewRule()">
+              <option value="auto">自动（auto）</option>
+              <option value="mobile">移动端（mobile）</option>
+              <option value="desktop">桌面端（desktop）</option>
+              <option value="browser">浏览器渲染（browser）</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>URL 模板</label>
+          <input type="text" id="fUrl" placeholder="https://example.com/search?q={keyword}" oninput="previewRule()">
+        </div>
+        <div class="form-group">
+          <label>User-Agent（留空使用默认）</label>
+          <input type="text" id="fUa" placeholder="可选，覆盖默认 UA" oninput="previewRule()">
+        </div>
+        <div class="form-section">提取规则</div>
+        <div class="form-group">
+          <label>列表元素路径（CSS/XPath/re）</label>
+          <input type="text" id="fItemsPath" placeholder="css:ul.news-list > li" oninput="previewRule()">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>标题提取</label>
+            <input type="text" id="fTitlePath" placeholder="css:h3 a::text" oninput="previewRule()">
+          </div>
+          <div class="form-group">
+            <label>标题属性（可选）</label>
+            <input type="text" id="fTitleAttr" placeholder="如：href" oninput="previewRule()">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>链接提取</label>
+          <input type="text" id="fUrlPath" placeholder="css:a::attr(href)" oninput="previewRule()">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>时间字段</label>
+            <input type="text" id="fTimePath" placeholder="css:span.time::text" oninput="previewRule()">
+          </div>
+          <div class="form-group">
+            <label>时间格式</label>
+            <input type="text" id="fTimeFmt" placeholder="如：%Y-%m-%d" oninput="previewRule()">
+          </div>
+        </div>
+        <div class="form-section">去重与过滤</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>去重字段</label>
+            <select id="fDedupField" onchange="previewRule()">
+              <option value="url">URL</option>
+              <option value="title">标题</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>增量采集</label>
+            <select id="fIncremental" onchange="previewRule()">
+              <option value="true">是</option>
+              <option value="false">否</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-section">分页（可选）</div>
+        <div class="form-group">
+          <label>分页 URL 模板</label>
+          <input type="text" id="fPageUrl" placeholder="https://example.com/page/{page}" oninput="previewRule()">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>起始页</label>
+            <input type="number" id="fPageStart" value="1" oninput="previewRule()">
+          </div>
+          <div class="form-group">
+            <label>最大页数</label>
+            <input type="number" id="fPageMax" value="5" oninput="previewRule()">
+          </div>
+        </div>
+      </div>
+      <!-- YAML Tab -->
+      <div id="panelYaml" class="modal-form" style="display:none">
+        <div class="form-group">
+          <label>YAML 内容</label>
+          <textarea id="fYamlRaw" oninput="syncYamlToPreview()"></textarea>
+        </div>
+      </div>
+      <!-- Preview -->
+      <div class="modal-preview">
+        <div class="modal-preview-label">YAML 预览</div>
+        <div id="yamlPreview">// 左侧填写内容，实时生成 YAML</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeRuleModal()">取消</button>
+      <button class="btn btn-run" onclick="submitRule()">✓ 创建规则</button>
+    </div>
+  </div>
+</div>
+
+<!-- Log Panel -->
+<div id="logPanel">
+  <div class="log-header">
+    <span class="log-title">◈ 实时日志</span>
+    <span class="log-status" id="logStatusText">● 直播中</span>
+    <span class="log-close" onclick="closeLogPanel()" title="关闭">✕</span>
+  </div>
+  <div class="log-body" id="logBody"></div>
+  <div class="log-status-bar">
+    <span><span class="live-dot"></span> <span id="logStatusText2">● 直播中</span></span>
+    <span id="logInfo">等待数据...</span>
+  </div>
+</div>
 </body>
 </html>
