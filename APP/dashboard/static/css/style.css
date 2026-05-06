@@ -1,32 +1,44 @@
 /* ═══════════════════════════════════════════════════════════════
    HUD Monitoring Style — Real-Time Dashboard Theme
-   Design System: Dark HUD / Real-Time Monitoring
+   Design System: Dark HUD / Supabase-Inspired Charcoal Palette
    ═══════════════════════════════════════════════════════════════ */
 
 :root {
-  --bg:           #090D14;
-  --surface:      #0F1623;
-  --card:         #131C2B;
-  --card-hover:   #172035;
-  --border:       #1E3A5F;
-  --border-dim:   #152238;
-  --text:         #E8F0FE;
-  --text-muted:   #5A7A9A;
-  --text-dim:     #3A5A7A;
+  /* ── Backgrounds ── */
+  --bg:           #111318;   /* 炭灰主背景，不再纯黑 */
+  --surface:      #17181E;   /* 卡片/容器背景 */
+  --card:         #1C1D24;   /* 独立卡片背景 */
+  --card-hover:   #22232C;   /* hover 态卡片 */
 
-  --accent:       #00D4FF;
-  --accent-glow:  rgba(0, 212, 255, 0.12);
-  --accent-dim:   rgba(0, 212, 255, 0.4);
+  /* ── Borders ── */
+  --border:       #2A2B36;   /* 主边框 */
+  --border-dim:   #1E1F28;   /* 次边框，更淡 */
 
-  --green:        #00FF88;
-  --green-glow:   rgba(0, 255, 136, 0.12);
-  --green-dim:    rgba(0, 255, 136, 0.4);
-  --red:          #FF3366;
-  --red-glow:     rgba(255, 51, 102, 0.12);
-  --yellow:       #FFB800;
-  --yellow-glow:  rgba(255, 184, 0, 0.12);
-  --orange:       #FF8C00;
+  /* ── Text ── */
+  --text:         #E8E9ED;   /* 主文字，近白不刺眼 */
+  --text-muted:   #8B8D9A;   /* 辅助文字，清晰可读 */
+  --text-dim:     #5C5E6A;   /* 暗淡文字 */
 
+  /* ── Brand Accent (Supabase Green) ── */
+  --accent:       #3ECFA0;   /* 主色调，柔和绿色而非刺眼青色 */
+  --accent-glow:  rgba(62, 207, 160, 0.10);
+  --accent-dim:   rgba(62, 207, 160, 0.28);
+
+  /* ── Status Colors ── */
+  --green:        #3ECFA0;   /* 与 accent 统一 */
+  --green-glow:   rgba(62, 207, 160, 0.10);
+  --green-dim:    rgba(62, 207, 160, 0.25);
+  --red:          #F87171;   /* 柔和红 */
+  --red-glow:     rgba(248, 113, 113, 0.10);
+  --yellow:       #FBBF24;   /* 琥珀色 */
+  --yellow-glow:  rgba(251, 191, 36, 0.10);
+  --orange:       #FB923C;   /* 橙色 */
+
+  /* ── Terminal / Code ── */
+  --term-bg:      #0F1117;   /* 终端背景，不再死黑 */
+  --term-text:    #9BA3B4;   /* 终端文字，清晰可读 */
+
+  /* ── Typography ── */
   --font-ui:   'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', 'Courier New', monospace;
 
@@ -229,14 +241,14 @@ body {
 .status-badge.running {
   background: var(--yellow-glow);
   color: var(--yellow);
-  border-color: rgba(255,184,0,0.3);
+  border-color: rgba(251, 191, 36, 0.3);
 }
 
 .badge-failed,
 .status-badge.failed {
   background: var(--red-glow);
   color: var(--red);
-  border-color: rgba(255,51,102,0.3);
+  border-color: rgba(248, 113, 113, 0.3);
 }
 
 /* ── Buttons ── */
@@ -256,7 +268,7 @@ body {
   gap: 6px;
 }
 
-.btn-primary:hover { background: #33DDFF; border-color: #33DDFF; }
+.btn-primary:hover { background: #52E3B2; border-color: #52E3B2; }
 
 .btn-sm {
   padding: 5px 11px;
@@ -364,8 +376,8 @@ body {
 .task-runner { margin-bottom: 20px; }
 
 .task-card {
-  background: #060910;
-  color: #9BB8D8;
+  background: var(--term-bg);
+  color: var(--term-text);
   border-radius: var(--radius);
   padding: 14px;
   margin-top: 12px;
@@ -385,7 +397,7 @@ body {
 
 /* ── Terminal Window ── */
 .terminal-window {
-  background: #060910;
+  background: var(--term-bg);
   border: 1px solid var(--border-dim);
   border-radius: var(--radius);
   overflow: hidden;
@@ -394,7 +406,7 @@ body {
 }
 
 .terminal-header {
-  background: #0B1019;
+  background: var(--surface);
   padding: 8px 14px;
   font-size: 10px;
   font-weight: 700;
@@ -417,7 +429,7 @@ body {
   padding: 12px 14px;
   max-height: 320px;
   overflow-y: auto;
-  color: #9BB8D8;
+  color: var(--term-text);
   line-height: 1.7;
 }
 
@@ -427,8 +439,8 @@ body {
   overflow-y: auto;
   font-family: var(--font-mono);
   font-size: 12px;
-  background: #060910;
-  color: #9BB8D8;
+  background: var(--term-bg);
+  color: var(--term-text);
   border-radius: var(--radius);
   padding: 12px;
   border: 1px solid var(--border-dim);
@@ -436,7 +448,7 @@ body {
 }
 
 .log-line { padding: 1px 0; }
-.log-INFO { color: #9BB8D8; }
+.log-INFO { color: var(--term-text); }
 .log-WARN { color: var(--yellow); }
 .log-ERROR { color: var(--red); }
 
@@ -477,7 +489,7 @@ select option { background: var(--card); }
 
 /* ── YAML Preview ── */
 .yaml-pre {
-  background: #060910;
+  background: var(--term-bg);
   padding: 14px;
   border-radius: var(--radius);
   font-size: 12px;
@@ -486,7 +498,7 @@ select option { background: var(--card); }
   white-space: pre-wrap;
   word-break: break-all;
   border: 1px solid var(--border-dim);
-  color: #9BB8D8;
+  color: var(--term-text);
   font-family: var(--font-mono);
   line-height: 1.6;
 }
@@ -503,7 +515,7 @@ select option { background: var(--card); }
 .dialog-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(6,9,16,0.82);
+  background: rgba(9, 10, 16, 0.75);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -519,14 +531,14 @@ select option { background: var(--card); }
   width: 760px;
   max-height: 88vh;
   overflow-y: auto;
-  box-shadow: 0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px var(--accent-glow);
+  box-shadow: 0 24px 80px rgba(0,0,0,0.5), 0 0 0 1px var(--accent-glow);
 }
 
 /* ── JSON Preview ── */
 .json-preview { margin-top: 12px; }
 .json-preview pre {
-  background: #060910;
-  color: #9BB8D8;
+  background: var(--term-bg);
+  color: var(--term-text);
   padding: 14px;
   border-radius: var(--radius);
   font-size: 12px;
@@ -557,7 +569,7 @@ select option { background: var(--card); }
 .error-msg {
   color: var(--red);
   background: var(--red-glow);
-  border: 1px solid rgba(255,51,102,0.2);
+  border: 1px solid rgba(248, 113, 113, 0.2);
   border-radius: var(--radius-sm);
   padding: 10px 14px;
   font-size: 12px;
@@ -604,7 +616,7 @@ select option { background: var(--card); }
   font-weight: 500;
 }
 .msg.success { background: var(--green-glow); color: var(--green); border: 1px solid var(--green-dim); }
-.msg.error { background: var(--red-glow); color: var(--red); border: 1px solid rgba(255,51,102,0.2); }
+.msg.error { background: var(--red-glow); color: var(--red); border: 1px solid rgba(248, 113, 113, 0.2); }
 
 /* ── Data Preview ── */
 .data-preview { }
@@ -646,12 +658,12 @@ select option { background: var(--card); }
   padding: 0 14px 12px;
 }
 .data-item-detail pre {
-  background: #060910;
+  background: var(--term-bg);
   border: 1px solid var(--border-dim);
   border-radius: var(--radius-sm);
   padding: 10px 12px;
   font-size: 11px;
-  color: #9BB8D8;
+  color: var(--term-text);
   font-family: var(--font-mono);
   overflow-x: auto;
   max-height: 300px;
@@ -682,7 +694,7 @@ select option { background: var(--card); }
 .term-line { padding: 2px 0; }
 .term-line.info,
 .term-line.done { color: var(--accent); }
-.term-line.log { color: #9BB8D8; }
+.term-line.log { color: var(--term-text); }
 .term-line.error { color: var(--red); }
 
 /* ── Cron Manager ── */
