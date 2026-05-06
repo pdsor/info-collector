@@ -17,6 +17,7 @@ htmlcov/
 output/
 dedup.db
 *.db
+dashboard.db
 
 # IDE
 .vscode/

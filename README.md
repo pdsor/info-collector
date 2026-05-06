@@ -16,16 +16,25 @@ info-collector/
 │   │   │   ├── engine.py            # 核心引擎
 │   │   │   ├── rule_parser.py       # YAML 规则解析
 │   │   │   ├── dedup.py             # SQLite 全局去重
-│   │   │   ├── state.py             # 状态管理（state.json）
+│   │   │   ├── state.py             # 状态管理
 │   │   │   ├── output.py            # JSON 输出管理
-│   │   │   ├── crawl_api.py         # API 采集
-│   │   │   ├── crawl_html.py        # HTML 采集
-│   │   │   └── crawl_browser.py     # 浏览器渲染采集（Playwright）
+│   │   │   ├── crawl_api.py         # API 采集（jsonpath-ng）
+│   │   │   ├── crawl_html.py        # HTML 采集（parsel + lxml）
+│   │   │   ├── crawl_browser.py    # 浏览器渲染采集（Playwright）
+│   │   │   └── parsers/             # 统一解析层（HTMLParser / JSONParser / UA）
 │   │   ├── rules/                   # YAML 采集规则
-│   │   ├── output/                  # 采集输出（JSON + state.json）
+│   │   ├── output/                  # 采集输出（JSON）
+│   │   ├── credentials.yaml          # API 凭证配置
 │   │   └── tests/                   # 单元测试
-│   └── dashboard/                   # 数据看板（纯 HTML/CSS/JS）
-│       └── index.html
+│   └── dashboard/                   # 数据看板（Flask + Vue 3 CDN）
+│       ├── server.py               # Flask 服务（端口 5000）
+│       ├── index.html              # 看板前端
+│       ├── apis/                   # REST API 蓝图
+│       │   ├── rules_api.py        # 规则管理（CRUD）
+│       │   ├── logs_api.py         # 实时日志流（SSE）
+│       │   ├── tasks_api.py        # 手动触发采集
+│       │   └── data_api.py         # 数据预览
+│       └── dashboard.db            # 看板数据库（cron 调度 + 任务历史）
 ├── DOCS/
 │   └── manual.md                    # 操作手册
 └── .gitignore
@@ -38,39 +47,64 @@ info-collector/
 ```bash
 cd APP/engine
 
-# 方式一（推荐）：使用 venv 管理脚本，一步完成
+# 方式一（推荐）：使用 venv 管理脚本
 ./venv.sh create
 
 # 方式二：手动操作
 python3 -m venv .venv
 source .venv/bin/activate        # Linux/macOS
-# .\.venv\\Scripts\\Activate.ps1  # Windows PowerShell
 pip install --upgrade pip
 pip install -r requirements.txt
-playwright install chromium       # 仅首次，浏览器渲染模式需要
+playwright install chromium       # 仅首次，browser 模式需要
 ```
 
-> ⚠️ **必须使用虚拟环境**。直接用系统 Python 安装会导致依赖冲突。`engine_cli.py` 内置 venv 检查，非虚拟环境运行时会报错。
+> ⚠️ **必须使用虚拟环境**。直接用系统 Python 安装会导致依赖冲突。`engine_cli.py` 内置 venv 检查。
 
-### 2. 配置规则
+### 2. 启动看板（方式一：Flask 服务）
 
-在 `rules/` 目录下创建 YAML 文件，参考现有规则格式。
+```bash
+# 安装看板依赖
+cd APP/dashboard
+pip install -r requirements.txt
+
+# 启动看板服务
+python server.py
+# 访问 http://localhost:5000
+```
+
+### 2. 启动看板（方式二：Docker）
+
+```bash
+cd APP/dashboard
+docker build -t info-collector-dashboard .
+docker run -p 5000:5000 info-collector-dashboard
+```
 
 ### 3. 运行采集
 
 ```bash
-# 使用 venv 运行
-./venv.sh run python engine_cli.py --run-all
-
-# 或手动激活后运行
+cd APP/engine
 source .venv/bin/activate
-python engine_cli.py --run-all
+
+# 运行所有已启用的规则
+python engine_cli.py run-all
+
+# 运行指定规则
+python engine_cli.py run baidu_search
+
+# 查看所有规则
+python engine_cli.py list-rules
+
 deactivate
 ```
 
-### 4. 查看看板
+## 看板功能
 
-直接用浏览器打开 `APP/dashboard/index.html`（需通过 HTTP 服务，或浏览器允许 file:// 访问）。
+- **实时日志流**：SSE 推送采集进度，日志样式参考硬件监控窗口
+- **规则管理**：表单向导 + YAML 编辑器，启用/禁用规则
+- **Cron 调度**：在看板中配置定时采集，无需手动运行
+- **数据预览**：表格 + JSON 展开，支持按 subject/platform 筛选
+- **任务历史**：记录每次采集的执行结果
 
 ## 核心设计
 
@@ -78,7 +112,8 @@ deactivate
 - **增量采集**：SQLite 全局去重表，同一来源第二次只采新数据
 - **状态持久化**：`output/state.json` 记录规则配置、执行历史、错误日志
 - **多源采集**：支持 API / HTML / 浏览器渲染（Playwright）三种模式
-- **凭证管理**：API Key 等凭证写入 `APP/engine/credentials.yaml`，不碰环境变量
+- **UA 策略**：`source.client` 支持 `auto`（自动降级）/ `mobile` / `desktop` / `browser`
+- **凭证管理**：API Key 等凭证写入 `credentials.yaml`，不碰环境变量
 
 ## 线索类型
 
