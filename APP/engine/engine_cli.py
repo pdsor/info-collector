@@ -233,7 +233,7 @@ def list_rules_cmd(fmt):
             "name": info.get("name", name),
             "platform": info.get("platform", ""),
             "subject": info.get("subject", ""),
-            "path": info.get("path", ""),
+            "path": info.get("rule_path") or info.get("path") or "",
             "enabled": info.get("enabled", True),
             "last_run": info.get("last_run"),
             "last_status": info.get("last_status"),
