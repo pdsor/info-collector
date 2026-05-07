@@ -8,35 +8,49 @@
 info-collector/
 ├── APP/
 │   ├── engine/                      # 采集引擎（Python）
-│   │   ├── engine_cli.py            # CLI 入口（强制 venv 检查）
-│   │   ├── venv.sh                  # 虚拟环境管理脚本
+│   │   ├── engine_cli.py             # CLI 入口（强制 venv 检查）
 │   │   ├── requirements.txt         # 依赖清单
-│   │   ├── dedup.db                 # SQLite 去重数据库（自动生成）
-│   │   ├── engine/                  # 核心代码包
-│   │   │   ├── engine.py            # 核心引擎
-│   │   │   ├── rule_parser.py       # YAML 规则解析
-│   │   │   ├── dedup.py             # SQLite 全局去重
-│   │   │   ├── state.py             # 状态管理
-│   │   │   ├── output.py            # JSON 输出管理
-│   │   │   ├── crawl_api.py         # API 采集（jsonpath-ng）
-│   │   │   ├── crawl_html.py        # HTML 采集（parsel + lxml）
-│   │   │   ├── crawl_browser.py    # 浏览器渲染采集（Playwright）
-│   │   │   └── parsers/             # 统一解析层（HTMLParser / JSONParser / UA）
-│   │   ├── rules/                   # YAML 采集规则
-│   │   ├── output/                  # 采集输出（JSON）
-│   │   ├── credentials.yaml          # API 凭证配置
-│   │   └── tests/                   # 单元测试
-│   └── dashboard/                   # 数据看板（Flask + Vue 3 CDN）
-│       ├── server.py               # Flask 服务（端口 5000）
-│       ├── index.html              # 看板前端
-│       ├── apis/                   # REST API 蓝图
-│       │   ├── rules_api.py        # 规则管理（CRUD）
-│       │   ├── logs_api.py         # 实时日志流（SSE）
-│       │   ├── tasks_api.py        # 手动触发采集
-│       │   └── data_api.py         # 数据预览
-│       └── dashboard.db            # 看板数据库（cron 调度 + 任务历史）
-├── DOCS/
-│   └── manual.md                    # 操作手册
+│   │   ├── credentials.yaml           # API 凭证配置（不提交）
+│   │   ├── dedup.db                  # SQLite 去重数据库（自动生成）
+│   │   ├── output/                   # 采集输出目录
+│   │   ├── rules/                    # YAML 采集规则
+│   │   ├── data/                     # 运行时数据（state.json 等）
+│   │   ├── engine/                   # 核心代码包
+│   │   │   ├── engine.py             # 主引擎（任务队列 + 调度）
+│   │   │   ├── rule_parser.py        # YAML 规则解析（Pydantic schema）
+│   │   │   ├── crawl_api.py          # API 采集（jsonpath-ng）
+│   │   │   ├── crawl_html.py         # HTML 采集（parsel + lxml）
+│   │   │   ├── crawl_browser.py      # 浏览器渲染（Playwright）
+│   │   │   ├── crawlers/             # 爬虫实现
+│   │   │   │   ├── playwright_crawler.py  # Playwright 封装
+│   │   │   │   └── crawl4ai_crawler.py    # Crawl4AI LLM 提取
+│   │   │   ├── parsers/              # 统一解析层（HTMLParser / JSONParser / UA）
+│   │   │   ├── dedup.py              # SQLite 全局去重
+│   │   │   ├── output.py             # JSON/CSV/JSONL 输出
+│   │   │   ├── state.py              # 状态管理
+│   │   │   └── events.py             # 事件总线
+│   │   └── tests/                    # 单元测试
+│   └── dashboard/                     # 数据看板（Flask + Vue 3 CDN）
+│       ├── server.py                 # Flask 服务（端口 5000）
+│       ├── requirements.txt          # 看板依赖
+│       ├── dashboard.db              # SQLite（cron 调度 + 任务历史）
+│       ├── index.html                # 入口页面
+│       ├── static/                   # 前端静态资源
+│       │   ├── css/style.css         # HUD 风格样式
+│       │   └── js/
+│       │       ├── app.js            # Vue 3 单文件应用（1300+ 行）
+│       │       └── api.js            # REST API 调用封装
+│       ├── apis/                     # REST API 蓝图
+│       │   ├── rules_api.py          # 规则管理（CRUD）
+│       │   ├── tasks_api.py          # 手动触发采集
+│       │   ├── logs_api.py           # 实时日志流（SSE）
+│       │   ├── data_api.py           # 数据预览
+│       │   └── cron_api.py           # Cron 调度管理
+│       ├── migrations/               # 数据库迁移脚本
+│       └── tests/                    # Dashboard 单元测试
+├── docs/superpowers/manuals/         # 操作手册
+│   └── yaml-rule-writing-handbook.md # YAML 规则编写手册
+├── AGENTS.md                         # 项目编码约束
 └── .gitignore
 ```
 
@@ -52,32 +66,21 @@ cd APP/engine
 
 # 方式二：手动操作
 python3 -m venv .venv
-source .venv/bin/activate        # Linux/macOS
+source .venv/bin/activate  # Linux/macOS
 pip install --upgrade pip
 pip install -r requirements.txt
-playwright install chromium       # 仅首次，browser 模式需要
+
+# 安装浏览器（Playwright + Crawl4AI 需要）
+playwright install chromium
 ```
 
-> ⚠️ **必须使用虚拟环境**。直接用系统 Python 安装会导致依赖冲突。`engine_cli.py` 内置 venv 检查。
-
-### 2. 启动看板（方式一：Flask 服务）
+### 2. 启动看板
 
 ```bash
-# 安装看板依赖
 cd APP/dashboard
 pip install -r requirements.txt
-
-# 启动看板服务
 python server.py
 # 访问 http://localhost:5000
-```
-
-### 2. 启动看板（方式二：Docker）
-
-```bash
-cd APP/dashboard
-docker build -t info-collector-dashboard .
-docker run -p 5000:5000 info-collector-dashboard
 ```
 
 ### 3. 运行采集
@@ -98,28 +101,50 @@ python engine_cli.py list-rules
 deactivate
 ```
 
+## 核心功能
+
+### 采集模式
+
+| 模式 | 说明 | 依赖 |
+|------|------|------|
+| `api` | HTTP API 请求，JSONPath 提取 | requests, jsonpath-ng |
+| `html` | HTML 页面，CSS Selector / XPath 提取 | parsel, lxml |
+| `browser` | 浏览器渲染，支持 JS 渲染页面 | playwright |
+| `crawl4ai` | LLM 辅助提取，可从复杂页面提取结构化数据 | crawl4ai |
+
+### 客户端策略
+
+`source.client` 支持四种策略：
+
+- `auto` — 根据响应自动降级（HTML → browser → crawl4ai）
+- `mobile` — 移动端 UA
+- `desktop` — 桌面端 UA
+- `browser` — 无头浏览器（Playwright）
+- `crawl4ai` — Crawl4AI LLM 提取
+
+### 去重机制
+
+全局 SQLite 去重表，基于 `dedup.url_to_id_pattern` 从 URL 提取 ID，同一来源第二次只采集新数据。
+
+### 输出格式
+
+支持 `json`、`csv`、`jsonl`，文件路径支持 `{date}` / `{time}` 模板。
+
 ## 看板功能
 
-- **实时日志流**：SSE 推送采集进度，日志样式参考硬件监控窗口
-- **规则管理**：表单向导 + YAML 编辑器，启用/禁用规则
-- **Cron 调度**：在看板中配置定时采集，无需手动运行
-- **数据预览**：表格 + JSON 展开，支持按 subject/platform 筛选
-- **任务历史**：记录每次采集的执行结果
+- **7 步规则创建向导** — 表单填写 + YAML 直接编辑双模式
+- **实时日志流** — SSE 推送采集进度，硬件监控窗口风格
+- **Cron 调度** — 在看板中配置定时采集任务
+- **数据预览** — 表格 + JSON 展开，按 subject / platform 筛选
+- **任务历史** — 记录每次采集的执行结果
 
-## 核心设计
+## 凭证管理
 
-- **规则驱动**：所有采集逻辑写在 YAML 规则文件中，与引擎解耦
-- **增量采集**：SQLite 全局去重表，同一来源第二次只采新数据
-- **状态持久化**：`output/state.json` 记录规则配置、执行历史、错误日志
-- **多源采集**：支持 API / HTML / 浏览器渲染（Playwright）三种模式
-- **UA 策略**：`source.client` 支持 `auto`（自动降级）/ `mobile` / `desktop` / `browser`
-- **凭证管理**：API Key 等凭证写入 `credentials.yaml`，不碰环境变量
+API Key 等敏感信息写入 `APP/engine/credentials.yaml`，不使用环境变量。
 
-## 线索类型
+## 开发约束
 
-数据要素价值化线索分为 5 类：
-- **政策**（policy）：政府/部门发布的数据要素相关政策
-- **项目**（project）：招标/中标/建设数据要素相关项目
-- **交易**（transaction）：数据产品挂牌/成交
-- **登记**（registration）：数据资产登记/知识产权登记
-- **投资**（investment）：数据要素相关投融资事件
+- 收到编码任务必须先 `brainstorming` 澄清需求，再 `writing-plans` 输出计划
+- 代码修改必须由 Claude Code 执行（禁止直接改代码）
+- 完成后必须 `verification-before-completion` 验证
+- 安装新依赖必须更新 README 和 requirements.txt
