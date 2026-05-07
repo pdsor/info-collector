@@ -1,4 +1,4 @@
-const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
+const { createApp, ref, computed, onMounted, onUnmounted, watch } = Vue;
 
 // ── API Helper ────────────────────────────────────────────────────────────────
 // API is defined in /static/js/api.js (shared across all components)
@@ -596,13 +596,227 @@ const RuleEditor = {
     emits: ['switch-tab'],
     setup(props, { emit }) {
         const yaml = ref(props.editRuleData?.yaml || '');
-        const rulePath = ref(props.editRuleData?.rule?.path || '');
-        const name = ref(props.editRuleData?.rule?.name || '');
-        const subject = ref(props.editRuleData?.rule?.subject || '');
-        const platform = ref(props.editRuleData?.rule?.platform || '');
         const isNew = computed(() => !props.editRuleData?.rule);
         const saving = ref(false);
         const message = ref('');
+        const activeStep = ref(0);
+        const steps = ['基本信息', '数据源', '请求配置', '列表提取', '渲染配置', '分页/去重', '输出与调度'];
+
+        // ── Basic info ──
+        const name = ref(props.editRuleData?.rule?.name || '');
+        const subject = ref(props.editRuleData?.rule?.subject || '');
+        const platform = ref(props.editRuleData?.rule?.platform || '');
+        const version = ref('1.0.0');
+        const description = ref('');
+        const enabled = ref(true);
+
+        // ── Source ──
+        const sourceType = ref('html');       // html | api | browser
+        const sourceUrl = ref('');
+        const sourceBaseUrl = ref('');
+        const client = ref('auto');           // auto | mobile | desktop | browser | crawl4ai
+        const authType = ref('none');
+        // LLM extraction
+        const extractionEnabled = ref(false);
+        const extractionPrompt = ref('');
+        const extractionStrategy = ref('llm');
+        const extractionSchema = ref('');     // JSON string
+
+        // ── Request (API) ──
+        const reqMethod = ref('GET');
+        const reqHeaders = ref('User-Agent: Mozilla/5.0\nContent-Type: application/json');
+        const bodyTemplate = ref('');
+        const reqParams = ref('');            // key: value per line
+
+        // ── List extraction ──
+        const itemsPath = ref('css:.item');
+        const fields = ref([{ name: 'title', type: 'field' }]);
+
+        const fieldTypes = ['constant', 'computed', 'field', 'attr', 'xpath'];
+
+        const addField = () => fields.value.push({ name: '', type: 'field' });
+        const removeField = (i) => fields.value.splice(i, 1);
+
+        // ── Render ──
+        const renderEnabled = ref(false);
+        const headless = ref(true);
+        const stealth = ref(true);
+        const waitForSelector = ref('');
+        const waitForTimeout = ref(3000);
+        const viewportWidth = ref(1920);
+        const viewportHeight = ref(1080);
+        const markdown = ref(true);
+        const removeForms = ref(false);
+
+        // ── Pagination / Dedup ──
+        const paginationEnabled = ref(false);
+        const pageParam = ref('pageNum');
+        const maxPages = ref(10);
+        const dedupIncremental = ref(false);
+        const urlToIdPattern = ref('');
+
+        // ── Output / Schedule ──
+        const outputFilename = ref('data_{date}.json');
+        const outputPath = ref('');
+        const scheduleCron = ref('');
+        const scheduleEnabled = ref(true);
+
+        // ── YAML raw editor ──
+        const showYaml = ref(false);
+
+        // ── Build YAML from form ──
+        const buildYaml = () => {
+            const lines = [];
+
+            lines.push(`name: "${name.value}"`);
+            if (subject.value) lines.push(`subject: "${subject.value}"`);
+            lines.push(`version: "${version.value}"`);
+            if (description.value) lines.push(`description: "${description.value}"`);
+            lines.push(`enabled: ${enabled.value}`);
+            lines.push('');
+
+            // source
+            lines.push('source:');
+            lines.push(`  platform: "${platform.value}"`);
+            lines.push(`  type: "${sourceType.value}"`);
+            if (subject.value) lines.push(`  subject: "${subject.value}"`);
+            if (authType.value && authType.value !== 'none') {
+                lines.push(`  auth:`);
+                lines.push(`    type: "${authType.value}"`);
+            }
+
+            if (sourceType.value === 'api') {
+                if (sourceBaseUrl.value) lines.push(`  base_url: "${sourceBaseUrl.value}"`);
+            } else {
+                if (sourceUrl.value) lines.push(`  url: "${sourceUrl.value}"`);
+            }
+            if (client.value !== 'auto') lines.push(`  client: "${client.value}"`);
+
+            // extraction
+            if (extractionEnabled.value) {
+                lines.push('  extraction:');
+                lines.push('    enabled: true');
+                if (extractionPrompt.value) {
+                    lines.push('    prompt: |');
+                    extractionPrompt.value.split('\n').forEach(l => lines.push(`      ${l}`));
+                }
+                lines.push(`    strategy: "${extractionStrategy.value}"`);
+                if (extractionSchema.value.trim()) {
+                    lines.push('    schema:');
+                    try {
+                        const schemaObj = JSON.parse(extractionSchema.value);
+                        lines.push(`      ${JSON.stringify(schemaObj, null, 2)}`.split('\n').map(l => '    ' + l).join('\n'));
+                    } catch (e) {
+                        lines.push('      # 无效 JSON schema');
+                    }
+                }
+            }
+            lines.push('');
+
+            // request (api)
+            if (sourceType.value === 'api') {
+                lines.push('request:');
+                lines.push(`  method: "${reqMethod.value}"`);
+                const headers = {};
+                reqHeaders.value.split('\n').forEach(line => {
+                    const [k, ...v] = line.split(':');
+                    if (k && v.length) headers[k.trim()] = v.join(':').trim();
+                });
+                if (Object.keys(headers).length) {
+                    lines.push('  headers:');
+                    Object.entries(headers).forEach(([k, v]) => lines.push(`    ${k}: "${v}"`));
+                }
+                if (bodyTemplate.value) {
+                    lines.push('  body_template: |');
+                    bodyTemplate.value.split('\n').forEach(l => lines.push(`    ${l}`));
+                }
+                if (reqParams.value) {
+                    lines.push('  params:');
+                    reqParams.value.split('\n').forEach(line => {
+                        const [k, ...v] = line.split(':');
+                        if (k && v.length) lines.push(`    ${k.trim()}: "${v.join(':').trim()}"`);
+                    });
+                }
+                lines.push('');
+            }
+
+            // list
+            lines.push('list:');
+            lines.push(`  items_path: "${itemsPath.value}"`);
+            lines.push('  fields:');
+            fields.value.forEach(f => {
+                lines.push(`    - name: "${f.name}"`);
+                lines.push(`      type: "${f.type}"`);
+                if (f.type === 'constant' && f.value !== undefined && f.value !== '') lines.push(`      value: ${JSON.stringify(f.value)}`);
+                if (f.type === 'field' && f.path) lines.push(`      path: "${f.path}"`);
+                if (f.type === 'attr' && f.path) lines.push(`      path: "${f.path}"`);
+                if (f.type === 'attr' && f.attr) lines.push(`      attr: "${f.attr}"`);
+                if (f.type === 'xpath' && f.path) lines.push(`      path: "${f.path}"`);
+                if (f.type === 'computed' && f.value) {
+                    lines.push(`      value: "${f.value}"`);
+                    lines.push('      vars:');
+                    if (f.vars) {
+                        Object.entries(f.vars).forEach(([vk, vv]) => lines.push(`        ${vk}: "${vv}"`));
+                    }
+                }
+                if (f.transform) lines.push(`      transform: "${f.transform}"`);
+            });
+            lines.push('');
+
+            // render
+            if (renderEnabled.value || sourceType.value === 'browser' || client.value === 'browser' || client.value === 'crawl4ai') {
+                lines.push('render:');
+                if (renderEnabled.value) {
+                    lines.push('  enabled: true');
+                } else {
+                    lines.push('  enabled: false');
+                }
+                lines.push(`  headless: ${headless.value}`);
+                lines.push(`  stealth: ${stealth.value}`);
+                if (waitForSelector.value) lines.push(`  wait_for_selector: "${waitForSelector.value}"`);
+                if (waitForTimeout.value !== 3000) lines.push(`  wait_for_timeout: ${waitForTimeout.value}`);
+                lines.push(`  viewport_width: ${viewportWidth.value}`);
+                lines.push(`  viewport_height: ${viewportHeight.value}`);
+                if (client.value === 'crawl4ai') {
+                    lines.push(`  markdown: ${markdown.value}`);
+                    lines.push(`  remove_forms: ${removeForms.value}`);
+                }
+                lines.push('');
+            }
+
+            // pagination (api)
+            if (paginationEnabled.value && sourceType.value === 'api') {
+                lines.push('pagination:');
+                lines.push('  enabled: true');
+                if (pageParam.value !== 'pageNum') lines.push(`  page_param: "${pageParam.value}"`);
+                if (maxPages.value !== 10) lines.push(`  max_pages: ${maxPages.value}`);
+                lines.push('');
+            }
+
+            // dedup
+            if (dedupIncremental.value || urlToIdPattern.value) {
+                lines.push('dedup:');
+                lines.push(`  incremental: ${dedupIncremental.value}`);
+                if (urlToIdPattern.value) lines.push(`  url_to_id_pattern: "${urlToIdPattern.value}"`);
+                lines.push('');
+            }
+
+            // output
+            lines.push('output:');
+            lines.push('  format: json');
+            if (outputFilename.value !== 'data_{date}.json') lines.push(`  filename_template: "${outputFilename.value}"`);
+            if (outputPath.value) lines.push(`  path: "${outputPath.value}"`);
+            lines.push('');
+
+            // schedule
+            if (scheduleCron.value) {
+                lines.push('schedule:');
+                lines.push(`  cron: "${scheduleCron.value}"`);
+                lines.push(`  enabled: ${scheduleEnabled.value}`);
+            }
+
+            return lines.join('\n');
+        };
 
         const save = async () => {
             if (!name.value || !subject.value || !platform.value) {
@@ -613,7 +827,7 @@ const RuleEditor = {
             saving.value = true;
             message.value = '';
             try {
-                const fullYaml = yaml.value || generateSkeleton();
+                const fullYaml = showYaml.value ? yaml.value : buildYaml();
                 await API.post('/rules', { path, yaml: fullYaml });
                 message.value = '保存成功';
                 setTimeout(() => emit('switch-tab', 'rules'), 1000);
@@ -624,63 +838,334 @@ const RuleEditor = {
             }
         };
 
-        const generateSkeleton = () => {
-            return `source:
-  name: "${name.value}"
-  platform: ${platform.value}
-  subject: ${subject.value}
-  enabled: true
+        const prevStep = () => { if (activeStep.value > 0) activeStep.value--; };
+        const nextStep = () => { if (activeStep.value < steps.length - 1) activeStep.value++; };
 
-platform:
-  type: generic
-  # 在此填写平台配置
+        const typeOptions = [
+            { label: 'HTML（直接请求，适合 SSR）', value: 'html' },
+            { label: 'API（JSON 接口）', value: 'api' },
+            { label: 'Browser（JS 渲染）', value: 'browser' },
+        ];
 
-trigger:
-  type: schedule
-  interval: 3600
+        const clientOptions = [
+            { label: 'auto — 自动（桌面优先，内容少时切换移动）', value: 'auto' },
+            { label: 'mobile — 强制移动端 UA', value: 'mobile' },
+            { label: 'desktop — 强制桌面端 UA', value: 'desktop' },
+            { label: 'browser — 浏览器渲染（Playwright）', value: 'browser' },
+            { label: 'crawl4ai — 浏览器渲染 + LLM 提取', value: 'crawl4ai' },
+        ];
 
-fields:
-  - name: title
-    type: string
-  - name: url
-    type: string
-  - name: published_at
-    type: datetime
-`;
+        const extractionStrategyOptions = [
+            { label: 'llm — LLM 语义提取', value: 'llm' },
+            { label: 'cosine — 余弦相似度语义过滤', value: 'cosine' },
+        ];
+
+        return {
+            yaml, isNew, saving, message, activeStep, steps,
+            name, subject, platform, version, description, enabled,
+            sourceType, sourceUrl, sourceBaseUrl, client, authType,
+            extractionEnabled, extractionPrompt, extractionStrategy, extractionSchema,
+            reqMethod, reqHeaders, bodyTemplate, reqParams,
+            itemsPath, fields, fieldTypes, addField, removeField,
+            renderEnabled, headless, stealth, waitForSelector, waitForTimeout,
+            viewportWidth, viewportHeight, markdown, removeForms,
+            paginationEnabled, pageParam, maxPages,
+            dedupIncremental, urlToIdPattern,
+            outputFilename, outputPath, scheduleCron, scheduleEnabled,
+            showYaml, save, prevStep, nextStep, typeOptions, clientOptions, extractionStrategyOptions,
         };
-
-        return { yaml, rulePath, name, subject, platform, isNew, saving, message, save };
     },
     template: `
 <div class="rule-editor">
   <div class="card">
     <h2>{{ isNew ? '➕ 新建规则' : '✏️ 编辑规则' }}</h2>
 
-    <div class="form-group">
-      <label>规则名称</label>
-      <input v-model="name" placeholder="例如: 公告抓取" style="width:100%;padding:8px" />
-    </div>
-
-    <div class="form-row">
-      <div class="form-group" style="flex:1">
-        <label>主题</label>
-        <input v-model="subject" placeholder="例如: 数据要素" style="width:100%;padding:8px" />
-      </div>
-      <div class="form-group" style="flex:1">
-        <label>平台</label>
-        <input v-model="platform" placeholder="例如: cninfo" style="width:100%;padding:8px" />
+    <!-- Step indicator -->
+    <div class="step-indicator">
+      <div v-for="(step, i) in steps" :key="i" :class="['step', i === activeStep ? 'active' : '', i < activeStep ? 'done' : '']" @click="activeStep = i">
+        <span class="step-num">{{ i + 1 }}</span>
+        <span class="step-label">{{ step }}</span>
       </div>
     </div>
 
-    <div class="form-group">
-      <label>YAML 内容</label>
-      <textarea v-model="yaml" rows="20" style="width:100%;font-family:monospace;font-size:13px;padding:8px" placeholder="在此填写 YAML 规则内容，或留空点击保存自动生成框架"></textarea>
+    <!-- ── Step 0: Basic Info ── -->
+    <div v-show="activeStep === 0" class="step-panel">
+      <div class="form-group">
+        <label>规则名称 <span class="required">*</span></label>
+        <input v-model="name" placeholder="例如: 巨潮资讯-数据要素公告" style="width:100%;padding:8px" />
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex:1">
+          <label>主题（subject） <span class="required">*</span></label>
+          <input v-model="subject" placeholder="例如: 数据要素" style="width:100%;padding:8px" />
+        </div>
+        <div class="form-group" style="flex:1">
+          <label>平台（platform） <span class="required">*</span></label>
+          <input v-model="platform" placeholder="例如: cninfo" style="width:100%;padding:8px" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex:1">
+          <label>版本</label>
+          <input v-model="version" placeholder="1.0.0" style="width:100%;padding:8px" />
+        </div>
+        <div class="form-group" style="flex:1">
+          <label>是否启用</label>
+          <label style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" v-model="enabled" /> 启用此规则
+          </label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>描述</label>
+        <textarea v-model="description" rows="3" style="width:100%;padding:8px" placeholder="规则用途说明..."></textarea>
+      </div>
+    </div>
+
+    <!-- ── Step 1: Source ── -->
+    <div v-show="activeStep === 1" class="step-panel">
+      <div class="form-group">
+        <label>数据源类型（type） <span class="required">*</span></label>
+        <select v-model="sourceType" style="width:100%;padding:8px">
+          <option v-for="opt in typeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>URL</label>
+        <input v-model="sourceUrl" :placeholder="sourceType === 'api' ? 'API 接口 URL（base_url）' : '列表页 URL'" style="width:100%;padding:8px" />
+        <small v-if="sourceType === 'api'" style="color:#888">API 类型请使用 base_url 字段（下一步请求配置中）</small>
+      </div>
+      <div class="form-group">
+        <label>UA 客户端策略（client）</label>
+        <select v-model="client" style="width:100%;padding:8px">
+          <option v-for="opt in clientOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+        </select>
+        <small style="color:#888">browser = Playwright 渲染；crawl4ai = 支持 LLM 提取的渲染引擎</small>
+      </div>
+
+      <!-- LLM Extraction -->
+      <div class="section-divider">🤖 LLM 提取配置（仅 crawl4ai 客户端支持）</div>
+      <div class="form-group">
+        <label><input type="checkbox" v-model="extractionEnabled" /> 启用 LLM 提取</label>
+      </div>
+      <div v-if="extractionEnabled">
+        <div class="form-group">
+          <label>提取指令（prompt）</label>
+          <textarea v-model="extractionPrompt" rows="4" style="width:100%;padding:8px" placeholder="请从文章页面提取：标题、作者、发布时间、正文内容"></textarea>
+        </div>
+        <div class="form-group">
+          <label>提取策略（strategy）</label>
+          <select v-model="extractionStrategy" style="width:100%;padding:8px">
+            <option v-for="opt in extractionStrategyOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Schema（可选，JSON 格式）</label>
+          <textarea v-model="extractionSchema" rows="4" style="width:100%;padding:8px;font-family:monospace;font-size:12px" placeholder='{"type":"object","properties":{"title":{"type":"string"}}}"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Step 2: Request ── -->
+    <div v-show="activeStep === 2" class="step-panel">
+      <div class="form-group">
+        <label>HTTP 方法</label>
+        <select v-model="reqMethod" style="width:100%;padding:8px">
+          <option value="GET">GET</option>
+          <option value="POST">POST</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>请求头（每行一个，格式: Key: Value）</label>
+        <textarea v-model="reqHeaders" rows="4" style="width:100%;font-family:monospace;font-size:13px;padding:8px" placeholder="User-Agent: Mozilla/5.0&#10;Content-Type: application/json"></textarea>
+      </div>
+      <div class="form-group">
+        <label>POST Body 模板（支持 {变量名} 占位）</label>
+        <textarea v-model="bodyTemplate" rows="4" style="width:100%;font-family:monospace;font-size:13px;padding:8px" placeholder="searchkey={keyword}&sdate=&edate="></textarea>
+      </div>
+      <div class="form-group">
+        <label>变量参数（每行一个，格式: 变量名: 值）</label>
+        <textarea v-model="reqParams" rows="3" style="width:100%;font-family:monospace;font-size:13px;padding:8px" placeholder="keyword: 数据要素"></textarea>
+      </div>
+    </div>
+
+    <!-- ── Step 3: List extraction ── -->
+    <div v-show="activeStep === 3" class="step-panel">
+      <div class="form-group">
+        <label>列表项选择器（items_path） <span class="required">*</span></label>
+        <input v-model="itemsPath" placeholder="css:.item  或  xpath://div[@class='item']  或  regex:..." style="width:100%;padding:8px;font-family:monospace" />
+        <small style="color:#888">格式: css:&lt;selector&gt; | xpath:&lt;expr&gt; | regex:&lt;pattern&gt;</small>
+      </div>
+      <div class="section-divider">字段定义</div>
+      <div v-for="(field, i) in fields" :key="i" class="field-row">
+        <div class="field-row-header">
+          <span style="font-weight:bold">字段 {{ i + 1 }}</span>
+          <button @click="removeField(i)" class="btn-sm btn-danger">删除</button>
+        </div>
+        <div class="form-row" style="align-items:flex-end">
+          <div class="form-group" style="flex:1">
+            <label>字段名</label>
+            <input v-model="field.name" placeholder="例如: title" style="width:100%;padding:6px" />
+          </div>
+          <div class="form-group" style="flex:1">
+            <label>类型</label>
+            <select v-model="field.type" style="width:100%;padding:6px">
+              <option v-for="ft in fieldTypes" :key="ft" :value="ft">{{ ft }}</option>
+            </select>
+          </div>
+        </div>
+        <div v-if="field.type === 'field'" class="form-group">
+          <label>JSONPath 路径（如 $.title）</label>
+          <input v-model="field.path" placeholder="$.announcementTitle" style="width:100%;padding:6px;font-family:monospace" />
+        </div>
+        <div v-if="field.type === 'attr'" class="form-row">
+          <div class="form-group" style="flex:1">
+            <label>XPath</label>
+            <input v-model="field.path" placeholder="xpath://div[@class='img']//img" style="width:100%;padding:6px;font-family:monospace" />
+          </div>
+          <div class="form-group" style="flex:1">
+            <label>属性名</label>
+            <input v-model="field.attr" placeholder="src" style="width:100%;padding:6px" />
+          </div>
+        </div>
+        <div v-if="field.type === 'xpath'" class="form-group">
+          <label>XPath</label>
+          <input v-model="field.path" placeholder="xpath://div[@class='content']//text()" style="width:100%;padding:6px;font-family:monospace" />
+        </div>
+        <div v-if="field.type === 'constant'">
+          <label>固定值</label>
+          <input v-model="field.value" placeholder="固定值" style="width:100%;padding:6px" />
+        </div>
+        <div v-if="field.type === 'computed'">
+          <label>模板字符串（可用 {变量名}）</label>
+          <input v-model="field.value" placeholder="https://example.com/id/{id}" style="width:100%;padding:6px;font-family:monospace" />
+        </div>
+        <div v-if="field.type === 'field' || field.type === 'attr'" class="form-group">
+          <label>变换函数（可选）</label>
+          <input v-model="field.transform" placeholder="strip_html, trim" style="width:100%;padding:6px" />
+          <small style="color:#888">可选: strip_html | trim | timestamp_ms_to_iso</small>
+        </div>
+      </div>
+      <button @click="addField" class="btn-sm" style="margin-top:8px">+ 添加字段</button>
+    </div>
+
+    <!-- ── Step 4: Render ── -->
+    <div v-show="activeStep === 4" class="step-panel">
+      <div class="form-group">
+        <label><input type="checkbox" v-model="renderEnabled" /> 启用浏览器渲染（render.enabled）</label>
+        <small style="color:#888;display:block">当 source.type=browser 或 client=browser/crawl4ai 时，渲染配置自动生效</small>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex:1">
+          <label>headless</label>
+          <select v-model="headless" style="width:100%;padding:8px">
+            <option :value="true">true — 无头模式</option>
+            <option :value="false">false — 显示浏览器窗口</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex:1">
+          <label>stealth（反爬规避）</label>
+          <select v-model="stealth" style="width:100%;padding:8px">
+            <option :value="true">true — 启用</option>
+            <option :value="false">false — 关闭</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>wait_for_selector（等待元素出现）</label>
+        <input v-model="waitForSelector" placeholder=".main-content 或 article" style="width:100%;padding:8px" />
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex:1">
+          <label>wait_for_timeout（ms）</label>
+          <input type="number" v-model="waitForTimeout" style="width:100%;padding:8px" />
+        </div>
+        <div class="form-group" style="flex:1">
+          <label>视口宽度</label>
+          <input type="number" v-model="viewportWidth" style="width:100%;padding:8px" />
+        </div>
+        <div class="form-group" style="flex:1">
+          <label>视口高度</label>
+          <input type="number" v-model="viewportHeight" style="width:100%;padding:8px" />
+        </div>
+      </div>
+      <div v-if="client === 'crawl4ai'" class="section-divider">Crawl4AI 专用配置</div>
+      <div v-if="client === 'crawl4ai'" class="form-row">
+        <div class="form-group" style="flex:1">
+          <label><input type="checkbox" v-model="markdown" /> markdown（返回 Markdown 而非 HTML）</label>
+        </div>
+        <div class="form-group" style="flex:1">
+          <label><input type="checkbox" v-model="removeForms" /> remove_forms（移除表单元素）</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Step 5: Pagination / Dedup ── -->
+    <div v-show="activeStep === 5" class="step-panel">
+      <div class="section-divider">分页配置（仅 API 类型）</div>
+      <div class="form-group">
+        <label><input type="checkbox" v-model="paginationEnabled" /> 启用分页</label>
+      </div>
+      <div v-if="paginationEnabled" class="form-row">
+        <div class="form-group" style="flex:1">
+          <label>页码参数名</label>
+          <input v-model="pageParam" placeholder="pageNum" style="width:100%;padding:8px" />
+        </div>
+        <div class="form-group" style="flex:1">
+          <label>最大页数</label>
+          <input type="number" v-model="maxPages" style="width:100%;padding:8px" />
+        </div>
+      </div>
+      <div class="section-divider">去重配置</div>
+      <div class="form-group">
+        <label><input type="checkbox" v-model="dedupIncremental" /> 启用增量去重</label>
+        <small style="color:#888;display:block">开启后相同 requirement+platform+raw_id 的数据会被自动过滤</small>
+      </div>
+      <div class="form-group">
+        <label>url_to_id_pattern（从 URL 提取 raw_id 的正则）</label>
+        <input v-model="urlToIdPattern" placeholder="example\\.com/article/(\\d+)" style="width:100%;padding:8px;font-family:monospace" />
+        <small style="color:#888">使用捕获组 () 提取 ID 部分，如 tmtpost\\.com/(\\d+)\\.html</small>
+      </div>
+    </div>
+
+    <!-- ── Step 6: Output / Schedule ── -->
+    <div v-show="activeStep === 6" class="step-panel">
+      <div class="section-divider">输出配置</div>
+      <div class="form-group">
+        <label>文件名模板</label>
+        <input v-model="outputFilename" placeholder="data_{date}.json" style="width:100%;padding:8px" />
+        <small style="color:#888">{date} 会替换为今天的日期 YYYYMMDD</small>
+      </div>
+      <div class="form-group">
+        <label>自定义输出路径（可选，留空使用默认路径 engine/data/{subject}/{platform}/）</label>
+        <input v-model="outputPath" placeholder="engine/data/数据要素/cninfo" style="width:100%;padding:8px" />
+      </div>
+      <div class="section-divider">调度配置（看板 APScheduler）</div>
+      <div class="form-group">
+        <label>Cron 表达式</label>
+        <input v-model="scheduleCron" placeholder="0 8 * * *" style="width:100%;padding:8px" />
+        <small style="color:#888">格式: 分 时 日 月 周，例如 0 8 * * * = 每天 8:00 执行</small>
+      </div>
+    </div>
+
+    <!-- ── YAML Raw Editor ── -->
+    <div class="yaml-toggle">
+      <label @click="showYaml = !showYaml" style="cursor:pointer">
+        <input type="checkbox" v-model="showYaml" /> 直接编辑 YAML（覆盖表单）
+      </label>
+    </div>
+    <div v-if="showYaml" class="form-group">
+      <textarea v-model="yaml" rows="20" style="width:100%;font-family:monospace;font-size:13px;padding:8px"></textarea>
     </div>
 
     <div v-if="message" :class="['msg', message.includes('成功') ? 'success' : 'error']">{{ message }}</div>
 
-    <div class="toolbar">
-      <button @click="save" class="btn-primary btn-lg" :disabled="saving">
+    <!-- Navigation -->
+    <div class="step-nav">
+      <button @click="prevStep" class="btn-sm" :disabled="activeStep === 0">上一步</button>
+      <span style="color:#888;font-size:13px">步骤 {{ activeStep + 1 }} / {{ steps.length }}</span>
+      <button @click="nextStep" class="btn-sm" :disabled="activeStep === steps.length - 1">下一步</button>
+      <button @click="save" class="btn-primary btn-lg" :disabled="saving" style="margin-left:auto">
         {{ saving ? '保存中...' : '保存规则' }}
       </button>
     </div>

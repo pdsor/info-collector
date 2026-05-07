@@ -709,3 +709,124 @@ code {
   font-size: 12px;
   font-family: var(--font-mono);
 }
+
+/* ── Rule Editor: Step Indicator ── */
+.step-indicator {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-dim);
+  background: var(--card);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.step:hover { border-color: var(--border); color: var(--text); }
+
+.step.active {
+  background: var(--accent-glow);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.step.done {
+  background: rgba(62, 207, 160, 0.06);
+  border-color: rgba(62, 207, 160, 0.3);
+  color: var(--text-muted);
+}
+
+.step-num {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--border-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.step.active .step-num { background: var(--accent); color: #000; }
+.step.done .step-num { background: rgba(62, 207, 160, 0.2); color: var(--accent); }
+
+/* ── Rule Editor: Step Panel ── */
+.step-panel {
+  background: var(--card);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.step-panel .form-group { margin-bottom: 14px; }
+.step-panel .form-group:last-child { margin-bottom: 0; }
+
+/* ── Rule Editor: Section Divider ── */
+.section-divider {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 10px 0 8px;
+  border-top: 1px solid var(--border-dim);
+  margin-top: 12px;
+  margin-bottom: 8px;
+}
+
+/* ── Rule Editor: Field Row ── */
+.field-row {
+  background: var(--surface);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+.field-row-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.step-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+/* ── Rule Editor: YAML toggle ── */
+.yaml-toggle {
+  margin-bottom: 12px;
+}
+
+/* ── Rule Editor: required asterisk ── */
+.required { color: var(--red); margin-left: 2px; }
+
+/* ── Rule Editor: textarea in step panel ── */
+.step-panel textarea,
+.step-panel input,
+.step-panel select {
+  background: var(--bg);
+}
+
