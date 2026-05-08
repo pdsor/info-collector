@@ -348,7 +348,8 @@ class InfoCollectorEngine:
 
             # Crawl
             items = self.crawl(rule)
-            event_handler(event_status(rule_path, "running", f"采集完成，共 {len(items)} 条"))
+            total_collected = len(items)
+            event_handler(event_status(rule_path, "running", f"采集完成，共 {total_collected} 条"))
 
             # Deduplicate
             items, dedup_filtered = self.deduplicate(items, rule)
@@ -373,8 +374,9 @@ class InfoCollectorEngine:
                 "status": "success",
                 "rule": rule_name,
                 "collected": len(items),
+                "total_collected": total_collected,
                 "dedup_filtered": dedup_filtered,
-                "output_path": output_path,
+                "output_path": output_path if output_path != "" else None,
                 "duration": duration,
             }
 
@@ -400,6 +402,9 @@ class InfoCollectorEngine:
             return {
                 "status": "failed",
                 "rule": rule_name,
+                "collected": 0,
+                "total_collected": 0,
+                "dedup_filtered": 0,
                 "error": error_msg,
                 "duration": duration,
             }

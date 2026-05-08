@@ -47,6 +47,61 @@
   --radius-lg:  12px;
 }
 
+/* ── Global Form Element Reset ── */
+button {
+  background: var(--card);
+  border: 1px solid var(--border-dim);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-glow);
+}
+
+input[type="text"],
+input[type="number"],
+input[type="search"],
+input[type="email"],
+input[type="password"],
+select,
+textarea {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-family: var(--font-ui);
+  outline: none;
+  transition: border-color 0.15s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+input::placeholder {
+  color: var(--text-dim);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+}
+
+select option {
+  background: var(--surface);
+  color: var(--text);
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
@@ -464,28 +519,7 @@ body {
   letter-spacing: 0.08em;
 }
 
-input[type="text"],
-input[type="number"],
-input[type="search"],
-select,
-textarea {
-  width: 100%;
-  background: var(--card);
-  border: 1px solid var(--border-dim);
-  color: var(--text);
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  font-size: 13px;
-  font-family: var(--font-ui);
-  outline: none;
-  transition: border-color 0.15s;
-}
-
-input:focus,
-select:focus,
-textarea:focus { border-color: var(--accent); background: var(--card-hover); }
-
-select option { background: var(--card); }
+/* ── [迁移至顶部全局 reset] 原 input/select 样式已移除 ── */
 
 /* ── YAML Preview ── */
 .yaml-pre {

@@ -157,9 +157,16 @@ def cmd_run_all(fmt):
         print(f"\n执行完成，共 {len(results)} 条规则:")
         for r in results:
             icon = {"success": "✅", "failed": "❌", "skipped": "⏩"}.get(r["status"], "❓")
-            print(f"  {icon} {r['rule']}: {r['status']}"
-                  + (f" | 采集:{r.get('collected', 0)}" if "collected" in r else "")
-                  + (f" | 错误:{r.get('error', '')[:60]}" if r.get("error") else ""))
+            if r["status"] == "success":
+                total_collected = r.get("total_collected", 0)
+                dedup_filtered = r.get("dedup_filtered", 0)
+                new_count = r.get("collected", 0)
+                duration = r.get("duration", 0)
+                rule_name = r.get("rule", os.path.basename(r.get("rule_path", "")))
+                print(f"  {icon} {rule_name}: 采集{total_collected}条 / 去重过滤{dedup_filtered}条 / 新增{new_count}条，耗时 {duration:.2f}s")
+            else:
+                print(f"  {icon} {r['rule']}: {r['status']}"
+                      + (f" | 错误:{r.get('error', '')[:60]}" if r.get("error") else ""))
     finally:
         e.close()
 
@@ -177,10 +184,15 @@ def cmd_run(rule_name):
         print(f"执行规则: {rule_name} ({rule_path})")
         result = e.run(rule_path)
         icon = {"success": "✅", "failed": "❌", "skipped": "⏩"}.get(result["status"], "❓")
-        print(f"  {icon} 状态: {result['status']}"
-              + (f" | 采集: {result.get('collected', 0)} 条" if "collected" in result else "")
-              + (f" | 去重过滤: {result.get('dedup_filtered', 0)} 条" if "dedup_filtered" in result else "")
-              + (f"\n  错误: {result.get('error', '')}" if result.get("error") else ""))
+        total_collected = result.get("total_collected", 0)
+        dedup_filtered = result.get("dedup_filtered", 0)
+        new_count = result.get("collected", 0)
+        duration = result.get("duration", 0)
+        if result["status"] == "success":
+            print(f"✅ [{rule_name}] 采集{total_collected}条 / 去重过滤{dedup_filtered}条 / 新增{new_count}条，耗时 {duration:.2f}s")
+        else:
+            print(f"  {icon} 状态: {result['status']}"
+                  + (f"\n  错误: {result.get('error', '')}" if result.get("error") else ""))
     finally:
         e.close()
 
@@ -342,11 +354,16 @@ def run_rule_cmd(rule_path, fmt):
         if fmt == "json":
             click.echo(json.dumps({
                 "success": result.get("status") == "success",
+                "total_collected": result.get("total_collected", 0),
+                "dedup_filtered": result.get("dedup_filtered", 0),
                 "new_count": result.get("collected", 0),
                 "duration": round(duration, 2),
             }, ensure_ascii=False))
         else:
-            click.echo(f"OK, new={result.get('collected', 0)}, time={duration:.1f}s")
+            total_collected = result.get("total_collected", 0)
+            dedup_filtered = result.get("dedup_filtered", 0)
+            new_count = result.get("collected", 0)
+            click.echo(f"✅ 采集{total_collected}条 / 去重过滤{dedup_filtered}条 / 新增{new_count}条，耗时 {duration:.2f}s")
     except Exception as ex:
         duration = time.time() - start
         if fmt == "json":

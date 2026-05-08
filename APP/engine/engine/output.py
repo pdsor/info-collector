@@ -57,6 +57,10 @@ class OutputManager:
         Output path: {base_path}/{subject}/{platform}/data_{date}.json
         Combined path: {base_path}/{subject}/combined_latest.json
         """
+        # 如果没有新增数据，跳过写入数据文件
+        if len(items) == 0:
+            return ""
+
         output_dir = self._resolve_output_dir(rule)
         os.makedirs(output_dir, exist_ok=True)
 
