@@ -161,6 +161,45 @@ class PlaywrightCrawler:
             page.close()
             context.close()
 
+    def resolve_url(self, url: str, render_config: dict = None, timeout: int = 15000) -> str:
+        """Navigate to URL and return the final URL after any redirects.
+
+        Uses wait_until='commit' for fastest possible return — we only care about
+        the URL, not the page content. Does not wait for resources to load.
+
+        Args:
+            url: URL to navigate to
+            render_config: optional config (headless, user_agent)
+            timeout: navigation timeout in ms (default 15000)
+
+        Returns:
+            The final URL after all redirects
+        """
+        config = render_config or {}
+        headless = config.get("headless", True)
+        ua = config.get("user_agent", "random")
+
+        if ua == "random":
+            ua = random.choice(USER_AGENTS)
+
+        browser = self._get_browser(headless=headless, stealth=False)
+        context = browser.new_context(
+            user_agent=ua,
+            viewport={"width": 1280, "height": 720},
+            ignore_https_errors=True,
+        )
+        page = context.new_page()
+
+        try:
+            # 'commit' = as soon as response is received, before any rendering
+            page.goto(url, wait_until="commit", timeout=timeout)
+            return page.url
+        except Exception:
+            return url
+        finally:
+            page.close()
+            context.close()
+
     def parse_items(self, html_content: str, items_path: str) -> list:
         """Parse items from browser-rendered HTML using CSS/XPath/regex extraction.
 
