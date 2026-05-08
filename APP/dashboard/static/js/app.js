@@ -1240,32 +1240,34 @@ const DataSubjectList = {
         return { summary, loading, totalForSubject, goDetail };
     },
     template: `
-<div class="card">
-  <h2>📊 数据预览</h2>
-  <div v-if="loading" class="loading">加载中...</div>
-  <div v-else-if="summary.length === 0" class="empty">暂无数据</div>
-  <div v-else>
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>主题</th>
-          <th>来源数</th>
-          <th>总条数</th>
-          <th>操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="s in summary" :key="s.subject">
-          <td>{{ s.subject }}</td>
-          <td>{{ s.platforms.length }}</td>
-          <td>{{ totalForSubject(s) }}</td>
-          <td><button class="btn" @click="goDetail(s.subject)">详情 →</button></td>
-        </tr>
-      </tbody>
-    </table>
+<div class="dp-detail">
+  <div class="dp-card">
+    <div class="dp-detail-header">
+      <h2 class="dp-subject-title">📊 数据预览</h2>
+    </div>
+
+    <div v-if="loading" class="dp-loading">
+      <div class="dp-loading-spinner"></div>
+      <span>加载中...</span>
+    </div>
+    <div v-else-if="summary.length === 0" class="dp-empty">
+      <div class="dp-empty-icon">📭</div>
+      <div>暂无数据</div>
+    </div>
+    <div v-else>
+      <div class="dp-subject-grid">
+        <div v-for="s in summary" :key="s.subject" class="dp-subject-card" @click="goDetail(s.subject)">
+          <div class="dp-subject-card-name">{{ s.subject }}</div>
+          <div class="dp-subject-card-meta">
+            <span class="dp-subject-card-total">{{ totalForSubject(s) }}</span>
+            <span class="dp-subject-card-sources">{{ s.platforms.length }} 个来源</span>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
-    `
+    `,
 };
 
 // ── DataSubjectDetail ─────────────────────────────────────────────────────────
