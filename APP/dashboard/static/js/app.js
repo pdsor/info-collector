@@ -1325,50 +1325,69 @@ const DataSubjectDetail = {
         return { items, total, loading, expandedItem, searchQuery, currentPage, pageSize, filteredItems, toggleExpand, totalPages, prevPage, nextPage };
     },
     template: `
-<div class="card">
-  <div class="detail-header">
-    <button class="btn" @click="window.location.hash='#/data'">← 返回</button>
-    <h2>{{ subject }}</h2>
-    <span>共 <strong>{{ total }}</strong> 条</span>
-  </div>
+<div class="dp-detail">
+  <div class="dp-card">
+    <div class="dp-detail-header">
+      <button class="dp-back-btn" @click.prevent="history.back()">← 返回</button>
+      <h2 class="dp-subject-title">{{ subject }}</h2>
+      <span class="dp-stat-badge">共 <strong>{{ total }}</strong> 条</span>
+    </div>
 
-  <div class="search-box">
-    <input v-model="searchQuery" placeholder="搜索标题、来源..." style="width:100%;padding:8px" />
-  </div>
+    <div class="dp-search-wrap">
+      <input v-model="searchQuery" type="search" class="dp-search-input" placeholder="搜索标题、来源..." />
+    </div>
 
-  <div v-if="loading" class="loading">加载中...</div>
-  <div v-else-if="filteredItems.length === 0" class="empty">暂无数据</div>
-  <div v-else>
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>来源</th>
-          <th>标题</th>
-          <th>时间</th>
-          <th>操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        <template v-for="(item, i) in filteredItems" :key="i">
-          <tr>
-            <td>{{ item.platform || '-' }}</td>
-            <td>{{ item.title || '-' }}</td>
-            <td>{{ item.publish_time || item.time || '-' }}</td>
-            <td><button class="btn" @click="toggleExpand(item)">{{ expandedItem === item ? '收起' : '展开' }}</button></td>
-          </tr>
-          <tr v-if="expandedItem === item" class="expand-row">
-            <td colspan="4">
-              <pre>{{ JSON.stringify(item, null, 2) }}</pre>
-            </td>
-          </tr>
-        </template>
-      </tbody>
-    </table>
+    <div v-if="loading" class="dp-loading">
+      <div class="dp-loading-spinner"></div>
+      <span>加载中...</span>
+    </div>
+    <div v-else-if="filteredItems.length === 0" class="dp-empty">
+      <div class="dp-empty-icon">📭</div>
+      <div>暂无数据</div>
+    </div>
+    <div v-else>
+      <div class="dp-table-wrap">
+        <table class="dp-table">
+          <thead>
+            <tr>
+              <th>来源</th>
+              <th>标题</th>
+              <th>时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template v-for="(item, i) in filteredItems" :key="i">
+              <tr>
+                <td><span class="dp-platform-tag">{{ item.platform || '-' }}</span></td>
+                <td class="dp-title-cell">{{ item.title || '-' }}</td>
+                <td class="dp-time-cell">{{ item.publish_time || item.time || '-' }}</td>
+                <td>
+                  <button class="dp-action-btn" @click="toggleExpand(item)">
+                    {{ expandedItem === item ? '收起' : '展开' }}
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="expandedItem === item" class="dp-expand-row">
+                <td colspan="4">
+                  <div class="dp-expand-content">
+                    <pre>{{ JSON.stringify(item, null, 2) }}</pre>
+                  </div>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
 
-    <div class="pagination">
-      <button class="btn" :disabled="currentPage <= 1" @click="prevPage">上一页</button>
-      <span>{{ currentPage }} / {{ totalPages }}</span>
-      <button class="btn" :disabled="currentPage >= totalPages" @click="nextPage">下一页</button>
+      <div class="dp-pagination">
+        <span class="dp-pagination-info">共 {{ total }} 条，第 {{ currentPage }} / {{ totalPages }} 页</span>
+        <div class="dp-pagination-controls">
+          <button class="dp-page-btn" :disabled="currentPage <= 1" @click="prevPage">上一页</button>
+          <span class="dp-page-current">{{ currentPage }} / {{ totalPages }}</span>
+          <button class="dp-page-btn" :disabled="currentPage >= totalPages" @click="nextPage">下一页</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
