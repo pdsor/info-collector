@@ -1282,7 +1282,10 @@ const DataSubjectDetail = {
         const currentPage = ref(1);
         const pageSize = 50;
 
+        const goBack = () => window.history.back();
+
         const loadData = async () => {
+            if (!props.subject) return;
             loading.value = true;
             try {
                 const data = await API.get(`/data/preview?subject=${encodeURIComponent(props.subject)}&page=${currentPage.value}&page_size=${pageSize}`);
@@ -1324,13 +1327,13 @@ const DataSubjectDetail = {
         watch([() => props.subject, currentPage], loadData);
         onMounted(loadData);
 
-        return { items, total, loading, expandedItem, searchQuery, currentPage, pageSize, filteredItems, toggleExpand, totalPages, prevPage, nextPage };
+        return { items, total, loading, expandedItem, searchQuery, currentPage, pageSize, filteredItems, toggleExpand, totalPages, prevPage, nextPage, goBack };
     },
     template: `
 <div class="dp-detail">
   <div class="dp-card">
     <div class="dp-detail-header">
-      <button class="dp-back-btn" @click.prevent="history.back()">← 返回</button>
+      <button class="dp-back-btn" @click.prevent="goBack">← 返回</button>
       <h2 class="dp-subject-title">{{ subject }}</h2>
       <span class="dp-stat-badge">共 <strong>{{ total }}</strong> 条</span>
     </div>
