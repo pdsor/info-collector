@@ -30,6 +30,11 @@ def list_rules():
         return jsonify({"error": stderr or "Failed to list rules"}), 500
     try:
         data = json.loads(stdout)
+        # Strip ENGINE_DIR prefix from rule paths, keeping only relative paths
+        for rule in data.get("rules", []):
+            path = rule.get("path", "")
+            if path.startswith(ENGINE_DIR + "/"):
+                rule["path"] = path[len(ENGINE_DIR) + 1:]
         return jsonify(data)
     except json.JSONDecodeError:
         return jsonify({"error": "Invalid JSON from engine_cli", "raw": stdout}), 500
@@ -39,6 +44,9 @@ def list_rules():
 def get_rule(rule_path):
     """GET /api/rules/<path> - Get rule YAML content."""
     # rule_path is already URL decoded by Flask
+    # If it's an absolute path, strip ENGINE_DIR prefix to get relative path
+    if os.path.isabs(rule_path) and rule_path.startswith(ENGINE_DIR + "/"):
+        rule_path = rule_path[len(ENGINE_DIR) + 1:]
     stdout, stderr, code = run_engine_cli(["get-rule", rule_path, "--format=json"])
     if code != 0:
         return jsonify({"error": stderr or "Rule not found"}), 404
