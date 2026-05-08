@@ -103,6 +103,48 @@ def _get_data_dir():
     return engine_data
 
 
+@data_bp.route("/summary", methods=["GET"])
+def data_summary():
+    """GET /api/data/summary — 主题摘要，供列表页使用"""
+    engine_data = _get_data_dir()
+    if not os.path.exists(engine_data):
+        return jsonify([])
+
+    result = []
+    try:
+        for subject in sorted(os.listdir(engine_data)):
+            s_path = os.path.join(engine_data, subject)
+            if not os.path.isdir(s_path):
+                continue
+            platforms = []
+            total = 0
+            try:
+                for platform in sorted(os.listdir(s_path)):
+                    p_path = os.path.join(s_path, platform)
+                    if not os.path.isdir(p_path):
+                        continue
+                    json_files = glob.glob(os.path.join(p_path, "*.json"))
+                    json_files = [f for f in json_files if not os.path.basename(f).startswith("combined")]
+                    latest_file = max(json_files) if json_files else None
+                    count = _count_items_in_file(latest_file) if latest_file else 0
+                    total += count
+                    platforms.append({
+                        "name": platform,
+                        "count": count,
+                        "latest_file": os.path.basename(latest_file) if latest_file else None,
+                    })
+            except OSError:
+                platforms = []
+            result.append({
+                "subject": subject,
+                "platforms": platforms,
+                "total": total,
+            })
+    except OSError:
+        pass
+    return jsonify(result)
+
+
 @data_bp.route("/subjects", methods=["GET"])
 def list_subjects():
     """GET /api/data/subjects — 列出所有数据主题"""
