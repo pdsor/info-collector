@@ -1174,38 +1174,116 @@ const RuleEditor = {
     `
 };
 
-// ── DataPreview ──────────────────────────────────────────────────────────────
-const DataPreview = {
+// ── DataHashRouter ────────────────────────────────────────────────────────────
+const DataHashRouter = {
     setup() {
-        const subjects = ref([]);
-        const platforms = ref([]);
-        const selectedSubject = ref('');
-        const selectedPlatform = ref('');
+        const route = ref(window.location.hash || '#/data');
+        const routeSubject = ref('');
+
+        const parseHash = () => {
+            const hash = window.location.hash;
+            route.value = hash || '#/data';
+            if (hash.startsWith('#/data/')) {
+                routeSubject.value = decodeURIComponent(hash.slice('#/data/'.length));
+            } else {
+                routeSubject.value = '';
+            }
+        };
+
+        const navigate = (path) => {
+            window.location.hash = path;
+        };
+
+        onMounted(() => {
+            parseHash();
+            window.addEventListener('hashchange', parseHash);
+        });
+
+        onUnmounted(() => {
+            window.removeEventListener('hashchange', parseHash);
+        });
+
+        return { route, routeSubject, navigate };
+    },
+    template: `
+<component :is="route === '#/data' || route === '#/data/' ? 'DataSubjectList' : 'DataSubjectDetail'"
+    :subject="routeSubject" />
+    `
+};
+
+// ── DataSubjectList ───────────────────────────────────────────────────────────
+const DataSubjectList = {
+    setup() {
+        const summary = ref([]);
+        const loading = ref(false);
+
+        const loadSummary = async () => {
+            loading.value = true;
+            try {
+                const data = await API.get('/data/summary');
+                summary.value = data || [];
+            } catch (err) { console.error(err); } finally {
+                loading.value = false;
+            }
+        };
+
+        const totalForSubject = (s) => {
+            return s.platforms.reduce((acc, p) => acc + (p.count || 0), 0);
+        };
+
+        const goDetail = (subject) => {
+            window.location.hash = '#/data/' + encodeURIComponent(subject);
+        };
+
+        onMounted(loadSummary);
+
+        return { summary, loading, totalForSubject, goDetail };
+    },
+    template: `
+<div class="card">
+  <h2>📊 数据预览</h2>
+  <div v-if="loading" class="loading">加载中...</div>
+  <div v-else-if="summary.length === 0" class="empty">暂无数据</div>
+  <div v-else>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>主题</th>
+          <th>来源数</th>
+          <th>总条数</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="s in summary" :key="s.subject">
+          <td>{{ s.subject }}</td>
+          <td>{{ s.platforms.length }}</td>
+          <td>{{ totalForSubject(s) }}</td>
+          <td><button class="btn" @click="goDetail(s.subject)">详情 →</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+    `
+};
+
+// ── DataSubjectDetail ─────────────────────────────────────────────────────────
+const DataSubjectDetail = {
+    props: ['subject'],
+    setup(props) {
         const items = ref([]);
         const total = ref(0);
         const loading = ref(false);
         const expandedItem = ref(null);
-
-        const loadSubjects = async () => {
-            try {
-                const data = await API.get('/data/subjects');
-                subjects.value = data.subjects || [];
-            } catch (err) { console.error(err); }
-        };
-
-        const loadPlatforms = async () => {
-            if (!selectedSubject.value) return;
-            try {
-                const data = await API.get(`/data/platforms?subject=${encodeURIComponent(selectedSubject.value)}`);
-                platforms.value = data.platforms || [];
-            } catch (err) { console.error(err); }
-        };
+        const searchQuery = ref('');
+        const currentPage = ref(1);
+        const pageSize = 50;
 
         const loadData = async () => {
-            if (!selectedSubject.value || !selectedPlatform.value) return;
             loading.value = true;
             try {
-                const data = await API.get(`/data/preview?subject=${encodeURIComponent(selectedSubject.value)}&platform=${encodeURIComponent(selectedPlatform.value)}`);
+                const data = await API.get(`/data/preview?subject=${encodeURIComponent(props.subject)}&page=${currentPage.value}&page_size=${pageSize}`);
                 items.value = data.items || [];
                 total.value = data.total || 0;
             } catch (err) { console.error(err); } finally {
@@ -1213,56 +1291,84 @@ const DataPreview = {
             }
         };
 
+        const filteredItems = computed(() => {
+            if (!searchQuery.value) return items.value;
+            const q = searchQuery.value.toLowerCase();
+            return items.value.filter(item =>
+                (item.title && item.title.toLowerCase().includes(q)) ||
+                (item.platform && item.platform.toLowerCase().includes(q)) ||
+                (item._source_file && item._source_file.toLowerCase().includes(q))
+            );
+        });
+
         const toggleExpand = (item) => {
             expandedItem.value = expandedItem.value === item ? null : item;
         };
 
-        watch(selectedSubject, loadPlatforms);
-        watch([selectedSubject, selectedPlatform], loadData);
+        const totalPages = computed(() => Math.ceil(total.value / pageSize));
 
-        onMounted(loadSubjects);
+        const prevPage = () => {
+            if (currentPage.value > 1) {
+                currentPage.value--;
+            }
+        };
 
-        return { subjects, platforms, selectedSubject, selectedPlatform, items, total, loading, expandedItem, toggleExpand };
+        const nextPage = () => {
+            if (currentPage.value < totalPages.value) {
+                currentPage.value++;
+            }
+        };
+
+        watch([() => props.subject, currentPage], loadData);
+        onMounted(loadData);
+
+        return { items, total, loading, expandedItem, searchQuery, currentPage, pageSize, filteredItems, toggleExpand, totalPages, prevPage, nextPage };
     },
     template: `
-<div class="data-preview">
-  <div class="card">
-    <h2>🔍 数据预览</h2>
-    <div class="form-row">
-      <div class="form-group" style="flex:1">
-        <label>主题</label>
-        <select v-model="selectedSubject" style="width:100%;padding:8px">
-          <option value="">-- 选择主题 --</option>
-          <option v-for="s in subjects" :key="s" :value="s">{{ s }}</option>
-        </select>
-      </div>
-      <div class="form-group" style="flex:1">
-        <label>平台</label>
-        <select v-model="selectedPlatform" style="width:100%;padding:8px" :disabled="!selectedSubject">
-          <option value="">-- 选择平台 --</option>
-          <option v-for="p in platforms" :key="p" :value="p">{{ p }}</option>
-        </select>
-      </div>
-    </div>
+<div class="card">
+  <div class="detail-header">
+    <button class="btn" @click="window.location.hash='#/data'">← 返回</button>
+    <h2>{{ subject }}</h2>
+    <span>共 <strong>{{ total }}</strong> 条</span>
+  </div>
 
-    <div v-if="selectedSubject && selectedPlatform" class="data-info">
-      共 <strong>{{ total }}</strong> 条记录，显示前 {{ items.length }} 条
-    </div>
+  <div class="search-box">
+    <input v-model="searchQuery" placeholder="搜索标题、来源..." style="width:100%;padding:8px" />
+  </div>
 
-    <div v-if="loading" class="loading">加载中...</div>
-    <div v-else-if="items.length === 0 && (selectedSubject && selectedPlatform)" class="empty">暂无数据</div>
-    <div v-else>
-      <div v-for="(item, i) in items" :key="i" class="data-item">
-        <div class="data-item-header" @click="toggleExpand(item)">
-          <span class="expand-icon">{{ expandedItem === item ? '▼' : '▶' }}</span>
-          <span v-for="(v, k) in Object.entries(item).slice(0, 4)" :key="k" class="data-chip">
-            <strong>{{ k }}:</strong> {{ v }}
-          </span>
-        </div>
-        <div v-if="expandedItem === item" class="data-item-detail">
-          <pre>{{ JSON.stringify(item, null, 2) }}</pre>
-        </div>
-      </div>
+  <div v-if="loading" class="loading">加载中...</div>
+  <div v-else-if="filteredItems.length === 0" class="empty">暂无数据</div>
+  <div v-else>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>来源</th>
+          <th>标题</th>
+          <th>时间</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template v-for="(item, i) in filteredItems" :key="i">
+          <tr>
+            <td>{{ item.platform || '-' }}</td>
+            <td>{{ item.title || '-' }}</td>
+            <td>{{ item.publish_time || item.time || '-' }}</td>
+            <td><button class="btn" @click="toggleExpand(item)">{{ expandedItem === item ? '收起' : '展开' }}</button></td>
+          </tr>
+          <tr v-if="expandedItem === item" class="expand-row">
+            <td colspan="4">
+              <pre>{{ JSON.stringify(item, null, 2) }}</pre>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+
+    <div class="pagination">
+      <button class="btn" :disabled="currentPage <= 1" @click="prevPage">上一页</button>
+      <span>{{ currentPage }} / {{ totalPages }}</span>
+      <button class="btn" :disabled="currentPage >= totalPages" @click="nextPage">下一页</button>
     </div>
   </div>
 </div>
@@ -1278,7 +1384,7 @@ const app = createApp({
             { id: "cron", label: "Cron调度", component: "CronManager" },
             { id: "tasks", label: "任务执行", component: "TaskRunner" },
             { id: "logs", label: "日志查看", component: "LogViewer" },
-            { id: "data", label: "数据预览", component: "DataPreview" },
+            { id: "data", label: "数据预览", component: "DataHashRouter" },
         ];
 
         const currentTab = ref("home");
@@ -1305,7 +1411,9 @@ app.component("RuleList", RuleList);
 app.component("CronManager", CronManager);
 app.component("TaskRunner", TaskRunner);
 app.component("LogViewer", LogViewer);
-app.component("DataPreview", DataPreview);
+app.component("DataHashRouter", DataHashRouter);
+app.component("DataSubjectList", DataSubjectList);
+app.component("DataSubjectDetail", DataSubjectDetail);
 app.component("RuleEditor", RuleEditor);
 
 app.mount("#app");
