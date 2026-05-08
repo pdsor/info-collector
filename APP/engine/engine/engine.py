@@ -27,7 +27,7 @@ class InfoCollectorEngine:
         self.state_mgr = StateManager(state_dir)
         self.api_crawler = APICrawler()
         self.html_crawler = HTMLCrawler()
-        self.browser_crawler = BrowserCrawler(client="playwright")
+        self.browser_crawler = BrowserCrawler(client="browser")
 
     def close(self):
         """Close all engine resources to prevent leaks"""
@@ -157,12 +157,12 @@ class InfoCollectorEngine:
         Priority:
             1. rule.get("client") — top-level override
             2. rule.get("source", {}).get("client") — source-level setting
-            3. Default: "playwright"
+            3. Default: "browser" (→ Crawl4AICrawler with stealth)
         
         Returns:
-            "playwright" or "crawl4ai"
+            "browser", "crawl4ai", or "playwright"
         """
-        return rule.get("client") or rule.get("source", {}).get("client") or "playwright"
+        return rule.get("client") or rule.get("source", {}).get("client") or "browser"
     
     def _crawl_browser(self, rule: dict) -> list:
         """Crawl browser-rendered page (JS-heavy sites)"""
