@@ -25,9 +25,11 @@ class BrowserCrawler:
     def _ensure_impl(self):
         """Lazy init based on current _client"""
         if self._impl_type != self._client:
-            if self._client == "playwright":
+            # "browser" is an alias for "playwright" in YAML rules
+            effective_client = "playwright" if self._client == "browser" else self._client
+            if effective_client == "playwright":
                 self._impl = PlaywrightCrawler()
-            elif self._client == "crawl4ai":
+            elif effective_client == "crawl4ai":
                 self._impl = Crawl4AICrawler()
             else:
                 raise ValueError(f"Unknown client: {self._client}")

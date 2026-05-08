@@ -5,3 +5,7 @@ enabled: true
 source:
   platform: test
   type: api
+
+list:
+  items_path: ""
+  fields: []
