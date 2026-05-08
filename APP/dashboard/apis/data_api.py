@@ -188,27 +188,66 @@ def list_platforms():
 
 @data_bp.route("/preview", methods=["GET"])
 def preview_data():
-    """GET /api/data/preview?subject=xxx&platform=xxx&limit=10 — 预览数据"""
+    """GET /api/data/preview?subject=xxx&platform=xxx&page=1&page_size=50 — 预览数据"""
     subject = request.args.get("subject", "")
-    platform = request.args.get("platform", "")
-    limit = min(int(request.args.get("limit", 20)), 100)
+    platform = request.args.get("platform", "") or None  # optional
+    page = max(1, int(request.args.get("page", 1)))
+    page_size = min(100, max(1, int(request.args.get("page_size", 50))))
 
-    if not subject or not platform:
-        return jsonify({"error": "subject and platform required"}), 400
+    if not subject:
+        return jsonify({"error": "subject required"}), 400
 
     engine_data = _get_data_dir()
-    latest_file = _find_latest_data_file(engine_data, subject, platform)
+    subject_dir = os.path.join(engine_data, subject)
 
-    if latest_file is None:
-        return jsonify({"error": "No data file found"}), 404
+    if not os.path.exists(subject_dir):
+        return jsonify({"error": "Subject not found"}), 404
 
-    items, total = _load_items_from_file(latest_file, limit=limit)
+    if platform:
+        # 传了 platform：行为不变，只看该平台
+        latest_file = _find_latest_data_file(engine_data, subject, platform)
+        if latest_file is None:
+            return jsonify({"error": "No data file found"}), 404
+        all_items, total = _load_items_from_file(latest_file)
+        # 标注来源
+        for item in all_items:
+            item["_source_file"] = os.path.basename(latest_file)
+        platform_label = platform
+    else:
+        # 不传 platform：跨所有平台合并，取最新5个文件
+        all_items = []
+        file_count = 0
+        for p in sorted(os.listdir(subject_dir)):
+            p_dir = os.path.join(subject_dir, p)
+            if not os.path.isdir(p_dir):
+                continue
+            json_files = glob.glob(os.path.join(p_dir, "*.json"))
+            # 过滤掉 combined 文件
+            json_files = [f for f in json_files if not os.path.basename(f).startswith("combined")]
+            if not json_files:
+                continue
+            # 取最新的5个文件
+            latest_5 = sorted(json_files)[-5:]
+            for f in latest_5:
+                items_from_file, _ = _load_items_from_file(f)
+                for item in items_from_file:
+                    item["_source_file"] = os.path.basename(f)
+                    all_items.append(item)
+                file_count += 1
+        total = len(all_items)
+        platform_label = "all"
+
+    # 分页
+    start = (page - 1) * page_size
+    end = start + page_size
+    items = all_items[start:end]
 
     return jsonify({
         "items": items,
         "total": total,
-        "preview_count": len(items),
-        "file": os.path.basename(latest_file),
+        "page": page,
+        "page_size": page_size,
+        "platform": platform_label,
     })
 
 
