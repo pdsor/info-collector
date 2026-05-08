@@ -1,7 +1,42 @@
 """Info Collector Engine - Main Engine Class"""
 import os
 from pathlib import Path
+from urllib.parse import parse_qs, unquote, urlparse
+import base64
 from .rule_parser import RuleParser
+
+
+def _transform_url(url: str, transform: str) -> str:
+    """Transform extracted URLs based on rule-specific patterns."""
+    if transform == "sogou_link":
+        # sogou weixin intermediate link: /link?url=<base64_url>&type=2&query=...&token=...
+        # Extract the 'url' param, URL-decode, then base64-decode to get real article URL
+        import html
+        try:
+            # Unescape HTML entities (&amp; -> &, etc.)
+            url = html.unescape(url)
+            parsed = urlparse(url)
+            params = parse_qs(parsed.query)
+            if "url" in params:
+                encoded_url = params["url"][0]
+                # URL decode first (the outer encoding)
+                decoded = unquote(encoded_url)
+                # Sogou uses '.' as extra padding character, strip it
+                decoded = decoded.rstrip('.')
+                # Add proper base64 padding if needed
+                padding_needed = 4 - (len(decoded) % 4)
+                if padding_needed != 4:
+                    decoded = decoded + "=" * padding_needed
+                # Base64 decode to get the real URL
+                real_url_bytes = base64.b64decode(decoded)
+                real_url = real_url_bytes.decode("utf-8")
+                return real_url
+        except Exception:
+            pass
+        return url  # fallback: return original
+    return url
+
+
 from .dedup import Deduplicator
 from .output import OutputManager
 from .crawl_api import APICrawler
@@ -132,7 +167,13 @@ class InfoCollectorEngine:
                 elif field_type == "element_text":
                     item[field_name] = element.get("title", "") or element.get("text", "")
                 elif field_type == "element_href":
-                    item[field_name] = element.get("href", "")
+                    href = element.get("href", "")
+                    transform = field_def.get("transform")
+                    if transform:
+                        href = _transform_url(href, transform)
+                    item[field_name] = href
+                    # resolve_url requires Playwright — only valid in _crawl_browser path
+                    # In _crawl_html, keep original URL (will be resolved if rule uses browser client)
                 elif field_type == "xpath":
                     item[field_name] = self.html_crawler.extract_text(
                         element.get("html", ""), field_def.get("path", "")
@@ -205,7 +246,21 @@ class InfoCollectorEngine:
                 elif field_type == "element_text":
                     item[field_name] = element.get("title", "") or element.get("text", "")
                 elif field_type == "element_href":
-                    item[field_name] = element.get("href", "")
+                    href = element.get("href", "")
+                    transform = field_def.get("transform")
+                    if transform:
+                        href = _transform_url(href, transform)
+                    item[field_name] = href
+                    # Resolve URL through browser if resolve_url is set (graceful fallback)
+                    if field_def.get("resolve_url") and item[field_name]:
+                        try:
+                            if self.browser_crawler is None:
+                                from .crawl_browser import BrowserCrawler
+                                self.browser_crawler = BrowserCrawler()
+                            resolved = self.browser_crawler.resolve_url(item[field_name])
+                            item[field_name] = resolved
+                        except Exception:
+                            pass  # Keep original URL on any error (e.g. Playwright not installed)
                 elif field_type == "xpath":
                     item[field_name] = self.browser_crawler.extract_text(
                         element.get("html", ""), field_def.get("path", "")

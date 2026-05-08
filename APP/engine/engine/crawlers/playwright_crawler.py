@@ -161,6 +161,52 @@ class PlaywrightCrawler:
             page.close()
             context.close()
 
+    def resolve_url(self, url: str, render_config: dict = None, timeout: int = 15000) -> str:
+        """Resolve a URL through browser redirects, returning the final URL.
+        
+        For sogou weixin intermediate links that redirect to mp.weixin.qq.com.
+        
+        Args:
+            url: The URL to open (e.g. 'https://weixin.sogou.com/link?url=...')
+            render_config: Optional render config dict (same as fetch())
+            timeout: Navigation timeout in ms (default 15000)
+        
+        Returns:
+            The final URL after all redirects (e.g. 'https://mp.weixin.qq.com/s/xxxx')
+            Returns original url if resolution fails.
+        """
+        config = render_config or {}
+        headless = config.get("headless", True)
+        stealth = config.get("stealth", True)
+        ua = config.get("user_agent", "random")
+        extra_headers = config.get("extra_headers", {})
+
+        if ua == "random":
+            ua = random.choice(USER_AGENTS)
+
+        browser = self._get_browser(headless=headless, stealth=stealth)
+        context = browser.new_context(
+            user_agent=ua,
+            viewport={"width": 1920, "height": 1080},
+            ignore_https_errors=True,
+            extra_http_headers=extra_headers,
+        )
+        page = context.new_page()
+
+        try:
+            # Use wait_until "commit" to return as soon as we get the first response
+            # This is faster than "domcontentloaded" and sufficient to capture the redirect URL
+            page.goto(url, wait_until="commit", timeout=timeout)
+            # Brief wait for JS redirect to complete
+            page.wait_for_timeout(2000)
+            return page.url
+        except Exception:
+            # On any error, return original URL
+            return url
+        finally:
+            page.close()
+            context.close()
+
     def parse_items(self, html_content: str, items_path: str) -> list:
         """Parse items from browser-rendered HTML using CSS/XPath/regex extraction.
 

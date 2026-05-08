@@ -2,7 +2,7 @@
 
 This module provides a dual-routing BrowserCrawler that delegates to:
   - PlaywrightCrawler (for Playwright-based rendering)
-  - Crawl4AICrawler (for Crawl4AI-based rendering)
+  - Crawl4AICrawler (for Crawl4AI-based rendering, default when using "browser" alias)
 """
 from typing import Optional
 from .crawlers import PlaywrightCrawler, Crawl4AICrawler
@@ -12,12 +12,12 @@ class BrowserCrawler:
     """Dual-routing crawler that delegates to PlaywrightCrawler or Crawl4AICrawler.
     
     Args:
-        client: "playwright" (default) or "crawl4ai" or None (auto-detect, defaults to playwright)
+        client: "browser" (default, aliases to crawl4ai) or "playwright" or "crawl4ai"
     """
     
     def __init__(self, client: str = None):
-        """client: "playwright" (default) or "crawl4ai" or None (auto-detect)"""
-        self._client = client or "playwright"
+        """client: "browser" (default, aliases to crawl4ai) or "playwright" or "crawl4ai" """
+        self._client = client or "browser"
         self._impl: Optional[object] = None
         self._impl_type: Optional[str] = None
         self._ensure_impl()
@@ -25,8 +25,11 @@ class BrowserCrawler:
     def _ensure_impl(self):
         """Lazy init based on current _client"""
         if self._impl_type != self._client:
-            # "browser" is an alias for "playwright" in YAML rules
-            effective_client = "playwright" if self._client == "browser" else self._client
+            # "browser" is an alias for "crawl4ai" (JS rendering + stealth, default)
+            if self._client == "browser":
+                effective_client = "crawl4ai"
+            else:
+                effective_client = self._client
             if effective_client == "playwright":
                 self._impl = PlaywrightCrawler()
             elif effective_client == "crawl4ai":
@@ -75,6 +78,14 @@ class BrowserCrawler:
         """Fetch page and return (html, screenshot_path). For debugging."""
         return self._impl.fetch_with_screenshot(url, render_config)
     
+    def resolve_url(self, url: str, render_config: dict = None, timeout: int = 15000) -> str:
+        """Resolve a URL through browser redirects, returning the final URL.
+        
+        URL navigation doesn't need stealth — always uses PlaywrightCrawler directly.
+        """
+        pw = PlaywrightCrawler()
+        return pw.resolve_url(url, render_config, timeout)
+    
     def parse_items(self, html_content: str, items_path: str) -> list:
         """Parse items from browser-rendered HTML using CSS/XPath/regex extraction."""
         return self._impl.parse_items(html_content, items_path)
@@ -110,7 +121,7 @@ class BrowserCrawler:
         if not hasattr(self._impl, 'extract_with_llm'):
             raise NotImplementedError(
                 f"extract_with_llm is not supported by {self._client} client. "
-                "Use 'crawl4ai' client to enable LLM extraction."
+                "Use 'browser' or 'crawl4ai' client to enable LLM extraction."
             )
         return self._impl.extract_with_llm(url, prompt, schema, strategy, render_config)
     
