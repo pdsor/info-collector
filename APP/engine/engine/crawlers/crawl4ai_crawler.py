@@ -89,7 +89,7 @@ class Crawl4AICrawler:
 
         render_config keys:
             headless: bool (default True)
-            stealth: bool (default False) — BrowserConfig.enable_stealth
+            stealth: bool (default True) — BrowserConfig.enable_stealth
             anti_bot: bool (default False) — alias for enable_stealth
             viewport_width: int (default 1920)
             viewport_height: int (default 1080)
@@ -98,7 +98,13 @@ class Crawl4AICrawler:
             markdown: bool (default True) — return markdown instead of raw html
             remove_forms: bool (default False) — remove form elements
         """
-        return asyncio.get_event_loop().run_until_complete(self._async_fetch(url, render_config))
+        import asyncio, concurrent.futures
+
+        def _run_async():
+            return asyncio.run(self._async_fetch(url, render_config))
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            return executor.submit(_run_async).result(timeout=60)
 
     async def _async_extract_with_llm(
         self, url: str, prompt: str, schema: dict, strategy, render_config: dict
@@ -154,9 +160,13 @@ class Crawl4AICrawler:
             strategy: "llm" (default) or "cosine" semantic filtering
             render_config: Browser rendering config (same keys as fetch())
         """
-        return asyncio.get_event_loop().run_until_complete(
-            self._async_extract_with_llm(url, prompt, schema, strategy, render_config)
-        )
+        import asyncio, concurrent.futures
+
+        def _run_async():
+            return asyncio.run(self._async_extract_with_llm(url, prompt, schema, strategy, render_config))
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            return executor.submit(_run_async).result(timeout=120)
 
     def parse_items(self, html_content: str, items_path: str) -> list:
         """Parse items from HTML using CSS/XPath extraction.
@@ -240,7 +250,13 @@ class Crawl4AICrawler:
         """Cleanup Crawl4AI resources."""
         if self._crawler is not None:
             try:
-                asyncio.get_event_loop().run_until_complete(self._crawler.close())
+                import asyncio, concurrent.futures
+
+                def _run_async():
+                    return asyncio.run(self._crawler.close())
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    executor.submit(_run_async).result(timeout=10)
             except Exception:
                 pass
             self._crawler = None
