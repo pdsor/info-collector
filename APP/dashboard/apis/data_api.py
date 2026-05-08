@@ -11,6 +11,9 @@ data_bp = Blueprint("data", __name__)
 
 DB_PATH = "APP/dashboard/dashboard.db"
 
+ENGINE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "engine")
+DATA_DIR = os.path.join(ENGINE_DIR, "output")
+
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -96,11 +99,9 @@ def _count_items_in_file(file_path: str) -> int:
 
 
 def _get_data_dir():
-    """获取 engine/data 目录路径"""
-    base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    engine_data = os.path.join(base, "engine", "data")
-    os.makedirs(engine_data, exist_ok=True)
-    return engine_data
+    """获取 engine/output 目录路径"""
+    os.makedirs(DATA_DIR, exist_ok=True)
+    return DATA_DIR
 
 
 @data_bp.route("/summary", methods=["GET"])
