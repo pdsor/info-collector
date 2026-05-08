@@ -2,7 +2,8 @@
 import asyncio
 from typing import Optional
 
-from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, DefaultMarkdownGenerator
+from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, DefaultMarkdownGenerator, UndetectedAdapter
+from crawl4ai.async_crawler_strategy import AsyncPlaywrightCrawlerStrategy
 from lxml import html as lxml_html
 
 
@@ -23,13 +24,25 @@ class Crawl4AICrawler:
         user_agent = config.get("user_agent")
         browser_kwargs = {
             "headless": config.get("headless", True),
-            "enable_stealth": config.get("stealth", False) or config.get("anti_bot", False),
+            "enable_stealth": config.get("stealth", True) or config.get("anti_bot", False),
             "viewport_width": config.get("viewport_width", 1920),
             "viewport_height": config.get("viewport_height", 1080),
         }
         if user_agent:
             browser_kwargs["user_agent"] = user_agent
         return BrowserConfig(**browser_kwargs)
+
+    def _build_proxy_config(self, config: dict):
+        """Build ProxyConfig from render_config dict."""
+        proxy = config.get("proxy")
+        if not proxy:
+            return None
+        from crawl4ai import ProxyConfig
+        return ProxyConfig(
+            server=proxy.get("server"),
+            username=proxy.get("username"),
+            password=proxy.get("password"),
+        )
 
     def _build_crawler_config(self, config: dict) -> CrawlerRunConfig:
         """Build CrawlerRunConfig from render_config dict."""
@@ -39,6 +52,8 @@ class Crawl4AICrawler:
             wait_for_timeout=config.get("wait_for_timeout"),
             remove_forms=config.get("remove_forms", False),
             markdown_generator=DefaultMarkdownGenerator() if want_markdown else None,
+            max_retries=config.get("max_retries", 0),
+            proxy_config=self._build_proxy_config(config),
         )
 
     async def _async_fetch(self, url: str, render_config: dict) -> str:
@@ -47,8 +62,16 @@ class Crawl4AICrawler:
         browser_cfg = self._build_browser_config(config)
         crawler_cfg = self._build_crawler_config(config)
 
-        crawler = self._get_crawler()
-        result = await crawler.arun(url=url, config=crawler_cfg, browser_config=browser_cfg)
+        if config.get("undetected"):
+            adapter = UndetectedAdapter()
+            strategy = AsyncPlaywrightCrawlerStrategy(
+                browser_config=browser_cfg, browser_adapter=adapter
+            )
+            crawler = AsyncWebCrawler(crawler_strategy=strategy, config=browser_cfg)
+            result = await crawler.arun(url=url, config=crawler_cfg)
+        else:
+            crawler = self._get_crawler()
+            result = await crawler.arun(url=url, config=crawler_cfg, browser_config=browser_cfg)
 
         # Return markdown if available and requested, otherwise html
         want_markdown = config.get("markdown", True)
