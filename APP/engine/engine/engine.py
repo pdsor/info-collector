@@ -196,14 +196,14 @@ class InfoCollectorEngine:
         """Determine which browser client to use for a rule.
         
         Priority:
-            1. rule.get("client") — top-level override
-            2. rule.get("source", {}).get("client") — source-level setting
-            3. Default: "playwright"
-        
+            1. rule["client"]
+            2. rule["source"]["client"]
+            3. Default: "browser" (aliases to "crawl4ai")
+
         Returns:
-            "playwright" or "crawl4ai"
+            "playwright", "crawl4ai", or "browser"
         """
-        return rule.get("client") or rule.get("source", {}).get("client") or "playwright"
+        return rule.get("client") or rule.get("source", {}).get("client") or "browser"
     
     def _crawl_browser(self, rule: dict) -> list:
         """Crawl browser-rendered page (JS-heavy sites)"""

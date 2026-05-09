@@ -5,7 +5,7 @@ This module provides a dual-routing BrowserCrawler that delegates to:
   - Crawl4AICrawler (for Crawl4AI-based rendering, default when using "browser" alias)
 """
 from typing import Optional
-from .crawlers import PlaywrightCrawler, Crawl4AICrawler
+from .crawlers import PlaywrightCrawler, Crawl4AICrawler, USER_AGENTS
 
 
 class BrowserCrawler:

@@ -108,10 +108,10 @@ class TestCrawl4AICrawler(unittest.TestCase):
 class TestBrowserCrawlerDualRouting(unittest.TestCase):
     """Tests for BrowserCrawler dual-routing between playwright and crawl4ai."""
 
-    def test_default_client_is_playwright(self):
-        """BrowserCrawler() default client should be 'playwright'."""
+    def test_default_client_is_browser(self):
+        """BrowserCrawler() default client should be 'browser' (aliased to crawl4ai)."""
         crawler = BrowserCrawler()
-        self.assertEqual(crawler.client, "playwright")
+        self.assertEqual(crawler.client, "browser")
 
     def test_switch_to_crawl4ai(self):
         """switch_client('crawl4ai') should change client to 'crawl4ai'."""
@@ -121,16 +121,21 @@ class TestBrowserCrawlerDualRouting(unittest.TestCase):
 
     def test_switch_closes_old_impl(self):
         """switch_client should call close() on old impl."""
-        with patch("engine.crawl_browser.PlaywrightCrawler") as MockPlaywrightCrawler:
-            mock_impl = MagicMock()
-            MockPlaywrightCrawler.return_value = mock_impl
+        with patch("engine.crawl_browser.Crawl4AICrawler") as MockCrawl4AI:
+            mock_crawl4ai_impl = MagicMock()
+            MockCrawl4AI.return_value = mock_crawl4ai_impl
 
-            crawler = BrowserCrawler()
-            mock_impl.close.reset_mock()
+            with patch("engine.crawl_browser.PlaywrightCrawler") as MockPlaywrightCrawler:
+                mock_pw_impl = MagicMock()
+                MockPlaywrightCrawler.return_value = mock_pw_impl
 
-            crawler.switch_client("crawl4ai")
+                # Default is 'browser' -> crawl4ai
+                crawler = BrowserCrawler()
+                mock_crawl4ai_impl.close.reset_mock()
 
-            mock_impl.close.assert_called_once()
+                crawler.switch_client("playwright")
+
+                mock_crawl4ai_impl.close.assert_called_once()
 
     def test_extract_with_llm_delegates(self):
         """BrowserCrawler.extract_with_llm should delegate to Crawl4AICrawler.extract_with_llm."""
@@ -191,10 +196,10 @@ class TestEngineBrowserRouting(unittest.TestCase):
         engine.close()
 
     def test_get_browser_client_default(self):
-        """No client specified should default to 'playwright'."""
+        """No client specified should default to 'browser' (which aliases to crawl4ai)."""
         engine = InfoCollectorEngine()
         rule = {"source": {"type": "browser", "url": "https://example.com"}}
-        self.assertEqual(engine._get_browser_client(rule), "playwright")
+        self.assertEqual(engine._get_browser_client(rule), "browser")
         engine.close()
 
     @patch("engine.crawl_browser.BrowserCrawler.switch_client")
