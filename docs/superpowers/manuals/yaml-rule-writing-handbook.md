@@ -75,7 +75,7 @@ source:
   subject: "数据要素"             # 可选，归属主题（也可放顶层）
   url: "https://..."              # type=html 或 type=browser 时必填
   base_url: "https://..."         # type=api 时必填，API 端点
-  client: "auto"                  # 可选，UA 客户端策略
+  client: "auto"                  # 可选，UA 客户端策略（仅 type=html 时生效）
   enabled: true                   # 可选，默认为 true；设为 false 跳过
   auth:                           # 可选，认证配置
     type: "none"                  # 目前仅支持 none
@@ -85,13 +85,25 @@ source:
 
 ### client UA 客户端策略
 
+> **重要**：`client` 的有效值取决于 `source.type`：
+> - `type: html` 时：`auto` | `mobile` | `desktop`
+> - `type: browser` 时：`browser`（默认）| `crawl4ai` | `playwright`
+
+#### type=html 时的 client 值
+
 | 值 | 说明 | 适用场景 |
 |----|------|----------|
 | `auto` | 先用桌面 UA，若页面 < 5KB 则切换移动 UA | 响应式页面，优先桌面内容 |
 | `mobile` | 强制使用移动端 User-Agent | 移动端专属页面 |
 | `desktop` | 强制使用桌面端 User-Agent | PC 端页面 |
-| `browser` | 走浏览器渲染（Playwright/Crawl4AI），UA 由渲染引擎控制 | JS 动态加载页面 |
-| `crawl4ai` | 强制使用 Crawl4AI 渲染引擎（支持 LLM 提取） | 需要 LLM 提取的场景 |
+
+#### type=browser 时的 client 值
+
+| 值 | 说明 | 适用场景 |
+|----|------|----------|
+| `browser`（默认）| 走浏览器渲染，实际使用 Crawl4AI（JS 渲染 + stealth） | JS 动态加载页面 |
+| `crawl4ai` | 强制使用 Crawl4AI，支持 LLM 提取 | 需要 LLM 提取的场景 |
+| `playwright` | 降级为 Playwright（无 LLM 提取能力） | 特殊兼容需求 |
 
 > **注意**：`client` 字段也可以放在**顶层**，优先级：`rule.client` > `source.client`。
 
@@ -103,7 +115,10 @@ source:
 | `html` | `browser` | BrowserCrawler（Playwright） |
 | `html` | `crawl4ai` | BrowserCrawler（Crawl4AI） |
 | `api` | 任意 | APICrawler |
-| `browser` | 任意 | BrowserCrawler |
+| `browser` | 不指定（默认）| BrowserCrawler（Crawl4AI） |
+| `browser` | `browser` | BrowserCrawler（Crawl4AI） |
+| `browser` | `crawl4ai` | BrowserCrawler（Crawl4AI） |
+| `browser` | `playwright` | BrowserCrawler（Playwright） |
 
 ---
 
