@@ -104,6 +104,27 @@ def test_tesseract_success_returns_text(monkeypatch, tmp_path):
     assert result.structured_data["words"][0]["text"] == "序号"
 
 
+def test_tesseract_success_keeps_text_when_structured_data_fails(monkeypatch, tmp_path):
+    """词块提取失败不应拖垮已成功的文本 OCR。"""
+    from engine.ocr_plugins.tesseract import TesseractOcrPlugin
+
+    image_path = tmp_path / "table.png"
+    image_path.write_bytes(b"fake-image")
+    monkeypatch.setattr("engine.ocr_plugins.tesseract._call_tesseract", lambda *args, **kwargs: "序号 | 数据名称")
+
+    def raise_data_error(*args, **kwargs):
+        raise RuntimeError("image_to_data failed")
+
+    monkeypatch.setattr("engine.ocr_plugins.tesseract._call_tesseract_data", raise_data_error)
+
+    result = TesseractOcrPlugin().recognize(str(image_path), {"languages": ["chi_sim", "eng"], "psm": 6})
+
+    assert result.status == "success"
+    assert result.text == "序号 | 数据名称"
+    assert result.manual_review_required is False
+    assert result.structured_data == {"words": []}
+
+
 def test_ocr_result_to_item_fields_excludes_structured_data():
     """OCR 结构化元数据不直接写入普通输出字段。"""
     result = OcrResult(

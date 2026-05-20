@@ -74,7 +74,10 @@ class TesseractOcrPlugin:
             psm = int((config or {}).get("psm") or 6)
             preprocess = (config or {}).get("preprocess") or {}
             text = _call_tesseract(image_path, languages, psm, preprocess).strip()
-            words = _call_tesseract_data(image_path, languages, psm, preprocess)
+            try:
+                words = _call_tesseract_data(image_path, languages, psm, preprocess)
+            except Exception:
+                words = []
             status = "empty" if text == "" else "success"
             return OcrResult(
                 plugin=self.name,
