@@ -156,6 +156,40 @@ def test_parse_ocr_result_degrades_when_positioned_columns_are_ambiguous():
 
     records, errors, semi_structured = parse_ocr_result(ocr_result, config)
 
-    assert records == [{"title": "OCR 半结构化结果", "ocr_text": "无法稳定拆分的 OCR 原文"}]
-    assert errors == ["未识别到表头或列数不一致"]
+    assert records == [
+        {
+            "id": "1",
+            "title": "OCR 半结构化结果",
+            "ocr_text": "1 车载红外高质量数据集 交通运输 湖北某公司",
+        }
+    ]
+    assert errors == ["第 1 行字段不完整"]
+    assert semi_structured is True
+
+
+def test_parse_ocr_result_keeps_incomplete_positioned_rows_for_review():
+    """坐标行缺少关键字段时不能静默丢弃，应保留人工复核记录。"""
+    ocr_result = OcrResult(
+        plugin="tesseract",
+        status="success",
+        text="",
+        structured_data={
+            "words": [
+                {"text": "序号", "left": 10, "top": 10, "width": 20, "height": 10},
+                {"text": "数据集名称", "left": 70, "top": 10, "width": 70, "height": 10},
+                {"text": "1", "left": 12, "top": 35, "width": 10, "height": 10},
+                {"text": "企业登记数据集", "left": 70, "top": 35, "width": 100, "height": 10},
+                {"text": "2", "left": 12, "top": 60, "width": 10, "height": 10},
+            ]
+        },
+    )
+    config = {"column_mapping": {"序号": "id", "数据集名称": "name"}}
+
+    records, errors, semi_structured = parse_ocr_result(ocr_result, config)
+
+    assert records == [
+        {"id": "1", "name": "企业登记数据集", "ocr_text": "1 企业登记数据集"},
+        {"id": "2", "title": "OCR 半结构化结果", "ocr_text": "2"},
+    ]
+    assert errors == ["第 2 行字段不完整"]
     assert semi_structured is True

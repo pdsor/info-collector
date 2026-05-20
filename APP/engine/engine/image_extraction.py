@@ -85,9 +85,10 @@ class ImageExtractionRunner:
                     ocr_result,
                     self.config.get("parse") or {},
                 )
-                if ocr_result.empty:
+                has_structured_words = bool(((getattr(ocr_result, "structured_data", None) or {}).get("words") or []))
+                if ocr_result.empty and not has_structured_words:
                     parsed_records = [{"title": "OCR 半结构化结果", "ocr_text": ""}]
-                    parse_errors = parse_errors or ["OCR 结果为空"]
+                    parse_errors = ["OCR 结果为空"]
                     semi_structured = True
                 records.extend(
                     self._merge_records(
@@ -155,7 +156,7 @@ class ImageExtractionRunner:
                 "source_img_alt": candidate.get("source_img_alt", ""),
                 **ocr_fields,
                 "semi_structured": bool(semi_structured),
-                "manual_review_required": bool(ocr_fields["manual_review_required"] or semi_structured),
+                "manual_review_required": bool(ocr_fields["manual_review_required"] or semi_structured or parse_errors),
                 "parse_errors": parse_errors,
             })
             if record.get("ocr_text"):

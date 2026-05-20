@@ -121,6 +121,7 @@ def _parse_positioned_table(words: list[dict], config: dict) -> tuple[list[dict]
             continue
 
         records = []
+        errors = []
         for data_row in rows[header_index + 1:]:
             sorted_row = sorted(data_row, key=lambda item: item.get("left", 0))
             if not sorted_row or not _is_id_text(sorted_row[0]["text"]):
@@ -136,19 +137,25 @@ def _parse_positioned_table(words: list[dict], config: dict) -> tuple[list[dict]
                         values[column["field"]].append(word["text"])
                         break
 
-            if not values.get("id") or not values.get("name"):
-                continue
-
             record = {}
             for field, field_values in values.items():
                 if not field_values:
                     continue
                 record[field] = " ".join(field_values).strip()
             record["ocr_text"] = _row_text(sorted_row)
+            if not record.get("id"):
+                record["id"] = sorted_row[0]["text"]
+            if not record.get("name"):
+                record = {
+                    "id": record.get("id", sorted_row[0]["text"]),
+                    "title": "OCR 半结构化结果",
+                    "ocr_text": _row_text(sorted_row),
+                }
+                errors.append(f"第 {record.get('id', '?')} 行字段不完整")
             records.append(record)
 
         if records:
-            return records, [], False
+            return records, errors, bool(errors)
     return None
 
 

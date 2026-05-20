@@ -49,6 +49,28 @@ class PositionedImageOcrPlugin:
         )
 
 
+class PartialPositionedImageOcrPlugin:
+    name = "partial_positioned_image_ocr"
+
+    def recognize(self, image_path: str, config: dict) -> OcrResult:
+        return OcrResult(
+            plugin=self.name,
+            status="success",
+            text="",
+            error="",
+            elapsed_seconds=0.01,
+            structured_data={
+                "words": [
+                    {"text": "序号", "left": 10, "top": 10, "width": 20, "height": 10},
+                    {"text": "数据集名称", "left": 70, "top": 10, "width": 70, "height": 10},
+                    {"text": "1", "left": 12, "top": 35, "width": 8, "height": 10},
+                    {"text": "企业登记数据集", "left": 70, "top": 35, "width": 100, "height": 10},
+                    {"text": "2", "left": 12, "top": 60, "width": 8, "height": 10},
+                ]
+            },
+        )
+
+
 def _rule(tmp_path, plugin="fake_image_ocr"):
     return {
         "source": {"url": "https://www.hubei.gov.cn/path/article.shtml", "platform": "hubei_gov"},
@@ -139,3 +161,30 @@ def test_image_extraction_prefers_positioned_ocr_result(monkeypatch, tmp_path):
     assert records[0]["ocr_text"] == "1 水环境监测数据集 自然资源 武汉市生态环境局"
     assert records[0]["manual_review_required"] is False
     assert records[0]["semi_structured"] is False
+
+
+def test_image_extraction_marks_parse_errors_for_review(monkeypatch, tmp_path):
+    """存在解析错误时记录应进入人工复核。"""
+    register_ocr_plugin(PartialPositionedImageOcrPlugin())
+    html = '<div class="hbgov-article-content"><img src="/upload/table.png" alt="数据清单"></div>'
+
+    class FakeResponse:
+        headers = {"content-type": "image/png", "content-length": "4"}
+        content = b"fake"
+
+        def raise_for_status(self):
+            return None
+
+    monkeypatch.setattr("engine.image_extraction.requests.get", lambda *args, **kwargs: FakeResponse())
+    records = ImageExtractionRunner(_rule(tmp_path, plugin="partial_positioned_image_ocr")).extract(
+        html,
+        [],
+        page_url="https://www.hubei.gov.cn/path/article.shtml",
+    )
+
+    assert records[0]["name"] == "企业登记数据集"
+    assert records[0]["manual_review_required"] is True
+    assert records[0]["semi_structured"] is True
+    assert records[0]["parse_errors"] == ["第 2 行字段不完整"]
+    assert records[1]["title"] == "OCR 半结构化结果"
+    assert records[1]["manual_review_required"] is True
