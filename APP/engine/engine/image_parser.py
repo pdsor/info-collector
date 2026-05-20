@@ -96,16 +96,18 @@ def _build_column_ranges(header_row: list[dict], mapping: dict) -> list[dict]:
     for word in sorted(header_row, key=lambda item: item.get("left", 0)):
         target = mapping.get(word["text"])
         if target:
-            headers.append({"field": target, "left": word.get("left", 0)})
+            left = word.get("left", 0)
+            width = word.get("width", 0) or 0
+            headers.append({"field": target, "left": left, "center": left + width / 2})
     if {"id", "name"} - {header["field"] for header in headers}:
         return []
 
     ranges = []
     for index, header in enumerate(headers):
-        previous_left = headers[index - 1]["left"] if index > 0 else None
-        next_left = headers[index + 1]["left"] if index + 1 < len(headers) else None
-        start = (previous_left + header["left"]) / 2 if previous_left is not None else float("-inf")
-        end = (header["left"] + next_left) / 2 if next_left is not None else float("inf")
+        previous_center = headers[index - 1]["center"] if index > 0 else None
+        next_center = headers[index + 1]["center"] if index + 1 < len(headers) else None
+        start = (previous_center + header["center"]) / 2 if previous_center is not None else float("-inf")
+        end = (header["center"] + next_center) / 2 if next_center is not None else float("inf")
         ranges.append({"field": header["field"], "start": start, "end": end})
     return ranges
 
@@ -127,8 +129,10 @@ def _parse_positioned_table(words: list[dict], config: dict) -> tuple[list[dict]
             values = {column["field"]: [] for column in ranges}
             for word in sorted_row:
                 left = word.get("left", 0)
+                width = word.get("width", 0) or 0
+                position = left + width / 2
                 for column in ranges:
-                    if column["start"] <= left < column["end"]:
+                    if column["start"] <= position < column["end"]:
                         values[column["field"]].append(word["text"])
                         break
 
@@ -139,8 +143,7 @@ def _parse_positioned_table(words: list[dict], config: dict) -> tuple[list[dict]
             for field, field_values in values.items():
                 if not field_values:
                     continue
-                separator = "" if field in {"name", "department"} else " "
-                record[field] = separator.join(field_values)
+                record[field] = " ".join(field_values).strip()
             record["ocr_text"] = _row_text(sorted_row)
             records.append(record)
 
