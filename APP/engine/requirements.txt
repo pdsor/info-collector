@@ -12,6 +12,10 @@ crawl4ai>=0.8.6
 # Storage
 sqlalchemy>=2.0.0
 
+# OCR
+Pillow>=10.0.0
+pytesseract>=0.3.10
+
 # Utils
 python-dateutil>=2.8.0
 tqdm>=4.65.0
