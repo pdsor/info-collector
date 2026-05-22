@@ -98,7 +98,8 @@ class OutputManager:
         with open(path, "w", encoding="utf-8") as f:
             f.write(content or "")
 
-    def save(self, items: list, rule: dict, dedup_filtered: int = 0) -> str:
+    def save(self, items: list, rule: dict, dedup_filtered: int = 0,
+             governance_summary: dict | None = None) -> str:
         """Save items to JSON file and update subject-level combined_latest.json.
 
         Output path: {base_path}/{subject}/{platform}/data_{date}.json
@@ -126,6 +127,7 @@ class OutputManager:
                 "collected_at": datetime.now().isoformat(),
                 "count": len(items),
                 "dedup_filtered": dedup_filtered,
+                "governance": governance_summary or {},
             },
             "data": items,
         }
