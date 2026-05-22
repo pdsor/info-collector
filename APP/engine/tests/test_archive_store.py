@@ -1,5 +1,6 @@
 """页面归档存储测试。"""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -66,6 +67,144 @@ def test_archive_store_rejects_empty_dsn():
 
     with pytest.raises(ValueError, match="dsn"):
         ArchiveStore(dsn="")
+
+
+def test_archive_store_from_env_reads_archive_pg_dsn(monkeypatch):
+    """应优先从环境变量读取 PostgreSQL 连接串。"""
+    from engine.archive_store import ArchiveStore
+
+    monkeypatch.setenv("ARCHIVE_PG_DSN", "postgresql://env/test")
+
+    store = ArchiveStore.from_env()
+
+    assert store.dsn == "postgresql://env/test"
+
+
+def test_archive_store_from_rule_falls_back_to_rule_dsn():
+    """规则中的 archive_store.dsn 应作为后备来源。"""
+    from engine.archive_store import ArchiveStore
+
+    store = ArchiveStore.from_rule({"archive_store": {"dsn": "postgresql://rule/test"}})
+
+    assert store.dsn == "postgresql://rule/test"
+
+
+def test_build_page_payload_includes_page_fields_and_metadata():
+    """页面 payload 应包含主记录字段和 metadata。"""
+    from engine.archive_store import ArchiveStore
+
+    payload = ArchiveStore.build_page_payload(
+        {
+            "source_url": "https://www.hubei.gov.cn/a.shtml",
+            "entry_url": "https://www.hubei.gov.cn/list.shtml",
+            "final_url": "https://www.hubei.gov.cn/final.shtml",
+            "domain": "www.hubei.gov.cn",
+            "platform": "hubei_gov",
+            "subject": "数据要素",
+            "title": "第三批湖北省高质量数据集名单",
+            "source_name": "湖北省数据局",
+            "publish_time": "2026-05-21T15:30:00+08:00",
+            "fetched_at": "2026-05-21T15:31:00+08:00",
+            "content_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "html": "<html></html>",
+            "markdown": "# 第三批湖北省高质量数据集名单",
+            "metadata": {"source_name": "湖北省数据局"},
+        }
+    )
+
+    assert payload["source_url"] == "https://www.hubei.gov.cn/a.shtml"
+    assert payload["entry_url"] == "https://www.hubei.gov.cn/list.shtml"
+    assert payload["final_url"] == "https://www.hubei.gov.cn/final.shtml"
+    assert payload["domain"] == "www.hubei.gov.cn"
+    assert payload["platform"] == "hubei_gov"
+    assert payload["subject"] == "数据要素"
+    assert payload["title"] == "第三批湖北省高质量数据集名单"
+    assert payload["metadata"] == {"source_name": "湖北省数据局"}
+
+
+def test_build_block_payload_includes_block_relationship_fields():
+    """页面块 payload 应包含块层级关键字段。"""
+    from engine.archive_store import ArchiveStore
+
+    payload = ArchiveStore.build_block_payload(
+        "page-1",
+        {
+            "block_order": 2,
+            "block_type": "paragraph",
+            "parent_block_id": "block-1",
+            "text": "正文",
+            "metadata": {"foo": "bar"},
+        },
+    )
+
+    assert payload["page_id"] == "page-1"
+    assert payload["block_order"] == 2
+    assert payload["block_type"] == "paragraph"
+    assert payload["parent_block_id"] == "block-1"
+
+
+def test_build_asset_payload_includes_asset_and_metadata_fields():
+    """资产 payload 应包含定位与存储字段。"""
+    from engine.archive_store import ArchiveStore
+
+    payload = ArchiveStore.build_asset_payload(
+        "page-1",
+        {
+            "block_id": "block-1",
+            "asset_type": "image",
+            "source_url": "https://www.hubei.gov.cn/img.png",
+            "storage_uri": "/tmp/scraper_imgs/x.png",
+            "metadata": {"alt": "名单图片"},
+        },
+    )
+
+    assert payload["page_id"] == "page-1"
+    assert payload["block_id"] == "block-1"
+    assert payload["asset_type"] == "image"
+    assert payload["storage_uri"] == "/tmp/scraper_imgs/x.png"
+    assert payload["metadata"] == {"alt": "名单图片"}
+
+
+def test_build_ocr_payload_includes_text_and_structured_data():
+    """OCR payload 应保留文本和结构化结果。"""
+    from engine.archive_store import ArchiveStore
+
+    payload = ArchiveStore.build_ocr_payload(
+        "page-1",
+        {
+            "asset_id": "asset-1",
+            "block_id": "block-ocr-1",
+            "ocr_text": "高质量数据集名单",
+            "structured_data": {"rows": []},
+        },
+    )
+
+    assert payload["page_id"] == "page-1"
+    assert payload["asset_id"] == "asset-1"
+    assert payload["block_id"] == "block-ocr-1"
+    assert payload["ocr_text"] == "高质量数据集名单"
+    assert payload["structured_data"] == {"rows": []}
+
+
+def test_build_structured_record_payload_includes_record_fields():
+    """结构化记录 payload 应包含来源块、记录类型和原始列。"""
+    from engine.archive_store import ArchiveStore
+
+    payload = ArchiveStore.build_structured_record_payload(
+        "page-1",
+        {
+            "source_block_id": "block-1",
+            "record_type": "table_row",
+            "data": {"id": "1", "name": "企业登记数据集"},
+            "raw_columns": ["1", "企业登记数据集"],
+        },
+    )
+
+    assert payload["page_id"] == "page-1"
+    assert payload["source_block_id"] == "block-1"
+    assert payload["record_type"] == "table_row"
+    assert payload["data"] == {"id": "1", "name": "企业登记数据集"}
+    assert payload["raw_columns"] == ["1", "企业登记数据集"]
 
 
 def test_archive_postgres_migration_defines_page_archive_schema():
