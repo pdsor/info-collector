@@ -135,3 +135,69 @@ def test_output_manager_saves_archive_package_structure(tmp_path):
     assert page_json["meta"]["title"] == "第三批湖北省高质量数据集名单"
     assert page_json["blocks"][0]["block_type"] == "heading"
     assert asset_manifest[0]["asset_type"] == "image"
+
+
+def test_build_archive_page_links_ocr_blocks_to_image_assets():
+    """OCR 块应能回溯到图片块和图片资产。"""
+    from engine.archive import build_archive_page
+
+    archive_page = build_archive_page(
+        source_url="https://www.hubei.gov.cn/a.shtml",
+        final_url="https://www.hubei.gov.cn/a.shtml",
+        domain="www.hubei.gov.cn",
+        platform="hubei_gov",
+        subject="数据要素",
+        title="图片 OCR 公示",
+        fetched_at="2026-05-21T15:30:00+08:00",
+        html="<html><body><img src='/img.png'></body></html>",
+        markdown="![名单图片](https://www.hubei.gov.cn/img.png)",
+        blocks=[
+            {
+                "block_id": "img-001",
+                "type": "image",
+                "order": 1,
+                "source_url": "https://www.hubei.gov.cn/img.png",
+                "storage_uri": "/tmp/scraper_imgs/x.png",
+            },
+            {
+                "block_id": "ocr-001",
+                "type": "ocr",
+                "order": 2,
+                "parent_block_id": "img-001",
+                "ocr_text": "高质量数据集名单",
+                "structured_data": {"rows": [{"name": "数据集 A"}]},
+            },
+        ],
+        assets=[
+            {
+                "id": "asset-img-001",
+                "asset_type": "image",
+                "source_url": "https://www.hubei.gov.cn/img.png",
+                "storage_uri": "/tmp/scraper_imgs/x.png",
+                "file_name": "x.png",
+                "extension": ".png",
+                "mime_type": "image/png",
+                "size_bytes": 12345,
+                "content_hash": "abc",
+                "downloaded": True,
+                "metadata": {"block_id": "img-001"},
+            }
+        ],
+    )
+
+    image_block = archive_page["blocks"][0]
+    ocr_block = archive_page["blocks"][1]
+    ocr_result = archive_page["ocr_results"][0]
+
+    assert image_block["asset_id"] == "asset-img-001"
+    assert archive_page["assets"][0]["block_id"] == "img-001"
+    assert ocr_block["parent_block_id"] == "img-001"
+    assert ocr_block["asset_id"] == "asset-img-001"
+    assert ocr_result == {
+        "page_id": None,
+        "asset_id": "asset-img-001",
+        "block_id": "ocr-001",
+        "parent_block_id": "img-001",
+        "ocr_text": "高质量数据集名单",
+        "structured_data": {"rows": [{"name": "数据集 A"}]},
+    }
