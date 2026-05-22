@@ -1,5 +1,7 @@
 """页面归档存储测试。"""
 
+from pathlib import Path
+
 import pytest
 
 
@@ -64,3 +66,65 @@ def test_archive_store_rejects_empty_dsn():
 
     with pytest.raises(ValueError, match="dsn"):
         ArchiveStore(dsn="")
+
+
+def test_archive_postgres_migration_defines_page_archive_schema():
+    """PostgreSQL 迁移应定义页面归档主库表结构。"""
+    repo_root = Path(__file__).resolve().parents[3]
+    sql_path = repo_root / "migrations" / "20260521_archive_postgres.sql"
+    sql = sql_path.read_text(encoding="utf-8").lower()
+
+    for table_name in [
+        "archive_pages",
+        "archive_blocks",
+        "archive_assets",
+        "ocr_results",
+        "structured_records",
+    ]:
+        assert f"create table if not exists {table_name}" in sql
+
+    expected_fields = [
+        "source_url text",
+        "domain text",
+        "title text",
+        "fetched_at timestamp with time zone",
+        "content_hash text",
+        "page_id uuid",
+        "block_order integer",
+        "block_type text",
+        "asset_type text",
+        "storage_uri text",
+        "mime_type text",
+        "size_bytes bigint",
+        "asset_id uuid",
+        "block_id uuid",
+        "ocr_text text",
+        "source_block_id uuid",
+        "record_type text",
+    ]
+    for field_definition in expected_fields:
+        assert field_definition in sql
+
+    for jsonb_field in [
+        "breadcrumb jsonb",
+        "metadata jsonb",
+        "structured_data jsonb",
+        "data jsonb",
+        "raw_columns jsonb",
+    ]:
+        assert jsonb_field in sql
+
+    for forbidden_binary_type in [" bytea", " blob", " binary"]:
+        assert forbidden_binary_type not in sql
+
+    expected_indexes = [
+        "archive_pages_source_url_hash_idx on archive_pages (content_hash)",
+        "archive_pages_domain_idx on archive_pages (domain)",
+        "archive_pages_platform_subject_idx on archive_pages (platform, subject)",
+        "archive_blocks_page_order_idx on archive_blocks (page_id, block_order)",
+        "archive_assets_page_idx on archive_assets (page_id)",
+        "ocr_results_page_idx on ocr_results (page_id)",
+        "structured_records_page_type_idx on structured_records (page_id, record_type)",
+    ]
+    for index_definition in expected_indexes:
+        assert index_definition in sql
