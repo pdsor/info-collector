@@ -70,7 +70,6 @@ class ArchiveStore:
             "block_order": record.get("block_order"),
             "block_type": record.get("block_type") or record.get("type"),
             "parent_block_id": record.get("parent_block_id"),
-            "block_id": record.get("block_id") or record.get("id"),
             "text": record.get("text", ""),
             "metadata": deepcopy(record.get("metadata", {}) or {}),
         }
@@ -106,7 +105,6 @@ class ArchiveStore:
             "page_id": page_id,
             "asset_id": record.get("asset_id"),
             "block_id": record.get("block_id"),
-            "parent_block_id": record.get("parent_block_id"),
             "ocr_text": record.get("ocr_text") or "",
             "structured_data": deepcopy(record.get("structured_data", {}) or {}),
         }

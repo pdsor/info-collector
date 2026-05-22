@@ -141,6 +141,7 @@ def test_build_block_payload_includes_block_relationship_fields():
     assert payload["block_order"] == 2
     assert payload["block_type"] == "paragraph"
     assert payload["parent_block_id"] == "block-1"
+    assert "block_id" not in payload
 
 
 def test_build_asset_payload_includes_asset_and_metadata_fields():
@@ -184,6 +185,7 @@ def test_build_ocr_payload_includes_text_and_structured_data():
     assert payload["block_id"] == "block-ocr-1"
     assert payload["ocr_text"] == "高质量数据集名单"
     assert payload["structured_data"] == {"rows": []}
+    assert "parent_block_id" not in payload
 
 
 def test_build_structured_record_payload_includes_record_fields():
