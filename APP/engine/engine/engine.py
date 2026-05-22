@@ -1,8 +1,10 @@
 """Info Collector Engine - Main Engine Class"""
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 import base64
+import parsel
 from .rule_parser import RuleParser
 
 
@@ -42,8 +44,12 @@ from .output import OutputManager
 from .crawl_api import APICrawler
 from .crawl_html import HTMLCrawler
 from .crawl_browser import BrowserCrawler
+from .governance import GovernancePipeline
+from .image_extraction import ImageExtractionRunner
 from .state import StateManager
 from .parsers import UA
+from .archive import build_archive_page
+from .archive_store import ArchiveStore
 
 
 class InfoCollectorEngine:
@@ -63,6 +69,7 @@ class InfoCollectorEngine:
         self.api_crawler = APICrawler()
         self.html_crawler = HTMLCrawler()
         self.browser_crawler = BrowserCrawler(client="playwright")
+        self.last_ocr_summary = {}
 
     def close(self):
         """Close all engine resources to prevent leaks"""
@@ -149,6 +156,10 @@ class InfoCollectorEngine:
         elements = self.html_crawler.parse_items(html_content, items_path)
         
         # Extract fields
+        if "extract" in rule:
+            items = self._extract_rule_v2_items(elements, rule)
+            return self._append_image_extraction_items(html_content, items, rule, url)
+
         field_defs = rule.get("list", {}).get("fields", [])
         items = []
         
@@ -190,18 +201,59 @@ class InfoCollectorEngine:
 
             items.append(item)
 
+        return self._append_image_extraction_items(html_content, items, rule, url)
+
+    def _append_image_extraction_items(self, html_content: str, items: list, rule: dict, page_url: str) -> list:
+        """在标准网页采集结果后按配置处理图片 OCR 记录。"""
+        runner = ImageExtractionRunner(rule)
+        ocr_items = runner.extract(html_content, items, page_url=page_url)
+        self.last_ocr_summary = runner.summary if runner.summary.get("enabled") else {}
+        output_mode = (rule.get("image_extraction") or {}).get("output_mode", "append")
+        if output_mode == "ocr_rows_only":
+            return ocr_items
+        if ocr_items:
+            return items + ocr_items
+        return items
+
+    def _extract_rule_v2_items(self, elements: list, rule: dict) -> list:
+        """按 NG v2 extract 字段从元素片段中提取结构化数据。"""
+        extract_defs = rule.get("extract") or {}
+        items = []
+        for element in elements:
+            html = element.get("html", "") if isinstance(element, dict) else str(element)
+            selector = parsel.Selector(text=html)
+            item = {}
+            for field_name, field_def in extract_defs.items():
+                field_type = field_def.get("type", "text")
+                css = field_def.get("selector", "")
+                selected = selector.css(css) if css else selector
+                if field_type == "attribute":
+                    attr = field_def.get("attribute", "")
+                    item[field_name] = selected.attrib.get(attr, "") if selected else ""
+                elif field_type == "html":
+                    item[field_name] = selected.get(default="") if selected else ""
+                elif field_type == "list":
+                    item[field_name] = [
+                        "".join(match.xpath("string()").getall()).strip()
+                        for match in selected
+                    ]
+                else:
+                    item[field_name] = (
+                        "".join(selected.xpath("string()").getall()).strip()
+                        if selected else ""
+                    )
+            items.append(item)
         return items
 
     def _get_browser_client(self, rule: dict) -> str:
         """Determine which browser client to use for a rule.
         
-        Priority:
             1. rule["client"]
             2. rule["source"]["client"]
-            3. Default: "browser" (aliases to "crawl4ai")
+            3. Default: "browser" (Playwright)
 
         Returns:
-            "playwright", "crawl4ai", or "browser"
+            "playwright" or "browser"
         """
         return rule.get("client") or rule.get("source", {}).get("client") or "browser"
     
@@ -209,11 +261,6 @@ class InfoCollectorEngine:
         """Crawl browser-rendered page (JS-heavy sites)"""
         url = rule.get("source", {}).get("url", "")
         render_config = rule.get("render", {})
-        
-        # Check if LLM extraction is enabled
-        extraction_config = rule.get("source", {}).get("extraction", {})
-        if extraction_config.get("enabled"):
-            return self._crawl_with_extraction(rule)
         
         # Switch client if needed (dual routing)
         client = self._get_browser_client(rule)
@@ -228,6 +275,10 @@ class InfoCollectorEngine:
         elements = self.browser_crawler.parse_items(html_content, items_path)
 
         # Extract fields
+        if "extract" in rule:
+            items = self._extract_rule_v2_items(elements, rule)
+            return self._append_image_extraction_items(html_content, items, rule, url)
+
         field_defs = rule.get("list", {}).get("fields", [])
         items = []
 
@@ -277,58 +328,8 @@ class InfoCollectorEngine:
 
             items.append(item)
 
-        return items
+        return self._append_image_extraction_items(html_content, items, rule, url)
     
-    def _crawl_with_extraction(self, rule: dict) -> list:
-        """Crawl with LLM extraction enabled via source.extraction config.
-        
-        When source.extraction.enabled is True:
-            1. Read source.extraction.prompt and source.extraction.schema
-            2. Switch to crawl4ai client
-            3. Call browser_crawler.extract_with_llm(url, prompt, schema, "llm", render_config)
-            4. Return LLM extraction results (parsed as JSON list or wrapped in list)
-        """
-        source = rule.get("source", {})
-        url = source.get("url", "")
-        render_config = rule.get("render", {})
-        extraction_config = source.get("extraction", {})
-        
-        prompt = extraction_config.get("prompt", "Extract the data")
-        schema = extraction_config.get("schema")
-        
-        # Ensure crawl4ai client for LLM extraction
-        client = self._get_browser_client(rule)
-        # Force crawl4ai if LLM extraction is requested but client is playwright
-        if client == "playwright":
-            # Check if extraction specifically asks for crawl4ai
-            pass  # Use whatever client was specified, let extract_with_llm fail if needed
-        
-        if self.browser_crawler.client != client:
-            self.browser_crawler.switch_client(client)
-        
-        # Perform LLM extraction
-        raw_result = self.browser_crawler.extract_with_llm(
-            url=url,
-            prompt=prompt,
-            schema=schema,
-            strategy="llm",
-            render_config=render_config,
-        )
-        
-        # Parse result - extract_with_llm returns a string (JSON or text)
-        import json
-        items = []
-        try:
-            # Try parsing as JSON list
-            items = json.loads(raw_result)
-            if isinstance(items, dict):
-                items = [items]
-        except (json.JSONDecodeError, TypeError):
-            # If not JSON, treat as single text item
-            items = [{"content": raw_result}]
-        
-        return items
-
     def deduplicate(self, items: list, rule: dict) -> tuple:
         """Deduplicate items, returns (filtered_items, count_filtered)"""
         if not rule.get("dedup", {}).get("incremental", False):
@@ -352,12 +353,84 @@ class InfoCollectorEngine:
         filtered_count = total_count - len(filtered_items)
         return filtered_items, filtered_count
     
-    def save_output(self, items: list, rule: dict, dedup_filtered: int = 0) -> str:
+    def save_output(self, items: list, rule: dict, dedup_filtered: int = 0,
+                    governance_summary: dict | None = None) -> str:
         """Save items to JSON output"""
-        return self.output_mgr.save(items, rule, dedup_filtered)
+        return self.output_mgr.save(items, rule, dedup_filtered, governance_summary)
+
+    def _maybe_archive_page(self, rule: dict, items: list, html: str | None) -> dict:
+        """如果规则配置了 archive.enabled=true，组装并写出归档包与主库记录。"""
+        archive_cfg = rule.get("archive") or {}
+        if not archive_cfg.get("enabled"):
+            return {}
+
+        source = rule.get("source", {}) or {}
+        source_url = source.get("url", "")
+        domain = urlparse(source_url).netloc or source.get("platform", "")
+        title = ""
+        if items and isinstance(items[0], dict):
+            title = items[0].get("title") or ""
+
+        archive_page = build_archive_page(
+            source_url=source_url,
+            entry_url=source_url,
+            final_url=source_url,
+            domain=domain,
+            platform=source.get("platform"),
+            subject=rule.get("subject") or source.get("subject"),
+            title=title,
+            source_name=source.get("source_name"),
+            publish_time=None,
+            fetched_at=datetime.now(timezone.utc).isoformat(),
+            html=html or "",
+            markdown="",
+            blocks=[],
+            assets=[],
+        )
+
+        package_path = self.output_mgr.save_archive_package(archive_page, rule)
+        store = ArchiveStore.from_rule(rule)
+        write_result = store.save_archive_page(archive_page)
+        return {
+            "archive_page_id": write_result.get("page_id"),
+            "archive_package_path": package_path,
+        }
+
+    def preview_rule(self, rule_path: str, limit: int = 5) -> dict:
+        """沙箱试采规则，不写状态、去重库或正式输出文件。"""
+        rule = self.load_rule(rule_path)
+        top_enabled = rule.get("enabled", True)
+        source_enabled = rule.get("source", {}).get("enabled", True)
+        if not top_enabled or not source_enabled:
+            return {
+                "success": True,
+                "status": "skipped",
+                "reason": "rule_disabled",
+                "total_collected": 0,
+                "preview_count": 0,
+                "items": [],
+                "governance": {},
+                "ocr_summary": {},
+            }
+
+        safe_limit = max(1, min(int(limit or 5), 20))
+        items = self.crawl(rule)
+        governance_result = GovernancePipeline(rule).process(items)
+        governed_items = governance_result.items
+        preview_items = governed_items[:safe_limit]
+        return {
+            "success": True,
+            "status": "partial_success" if governance_result.status == "PARTIAL_SUCCESS" else "success",
+            "total_collected": len(governed_items),
+            "preview_count": len(preview_items),
+            "items": preview_items,
+            "governance": governance_result.summary,
+            "ocr_summary": self.last_ocr_summary,
+        }
     
-    def run(self, rule_path: str, event_handler=None) -> dict:
+    def run(self, rule_path: str, event_handler=None, include_data: bool = False) -> dict:
         """Run full collection pipeline, record state, return result dict"""
+        import copy
         import time
         import traceback
 
@@ -403,6 +476,7 @@ class InfoCollectorEngine:
 
             # Crawl
             items = self.crawl(rule)
+            raw_items = copy.deepcopy(items)
             total_collected = len(items)
             event_handler(event_status(rule_path, "running", f"采集完成，共 {total_collected} 条"))
 
@@ -411,7 +485,16 @@ class InfoCollectorEngine:
             event_handler(event_status(rule_path, "running", f"去重后 {len(items)} 条新数据"))
 
             # Save output
-            output_path = self.save_output(items, rule, dedup_filtered)
+            governance_result = GovernancePipeline(rule).process(items)
+            items = governance_result.items
+            output_path = self.save_output(
+                items,
+                rule,
+                dedup_filtered,
+                governance_summary=governance_result.summary,
+            )
+
+            archive_info = self._maybe_archive_page(rule, items, html=None)
 
             # Record success
             self.state_mgr.record_finish(
@@ -425,15 +508,22 @@ class InfoCollectorEngine:
             duration = time.time() - start
             event_handler(event_complete(rule_path, new_count=len(items), skip_count=dedup_filtered, duration=duration))
 
-            return {
-                "status": "success",
+            result = {
+                "status": "partial_success" if governance_result.status == "PARTIAL_SUCCESS" else "success",
                 "rule": rule_name,
                 "collected": len(items),
                 "total_collected": total_collected,
                 "dedup_filtered": dedup_filtered,
                 "output_path": output_path if output_path != "" else None,
                 "duration": duration,
+                "governance": governance_result.summary,
             }
+            if include_data:
+                result["raw_data"] = raw_items
+                result["deduped_data"] = items
+            if archive_info:
+                result.update(archive_info)
+            return result
 
         except Exception as e:
             error_msg = f"{type(e).__name__}: {str(e)}"
