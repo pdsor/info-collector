@@ -98,6 +98,16 @@ class RuleParser:
         discovery = self._validate_optional_object_block(rule, "discovery")
         if discovery is not None:
             self._validate_no_forbidden_runtime_config(discovery, "discovery")
+            if discovery.get("enabled"):
+                list_cfg = discovery.get("list") or {}
+                if not list_cfg.get("items_path"):
+                    raise ValueError(
+                        "discovery.list.items_path is required when discovery is enabled"
+                    )
+                if not list_cfg.get("detail_url"):
+                    raise ValueError(
+                        "discovery.list.detail_url is required when discovery is enabled"
+                    )
 
         archive = self._validate_optional_object_block(rule, "archive")
         if archive is not None:

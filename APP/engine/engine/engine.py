@@ -2,7 +2,7 @@
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, unquote, urljoin, urlparse
 import base64
 import parsel
 from .rule_parser import RuleParser
@@ -70,6 +70,7 @@ class InfoCollectorEngine:
         self.html_crawler = HTMLCrawler()
         self.browser_crawler = BrowserCrawler(client="playwright")
         self.last_ocr_summary = {}
+        self._last_list_html = ""
 
     def close(self):
         """Close all engine resources to prevent leaks"""
@@ -150,7 +151,9 @@ class InfoCollectorEngine:
                 html_content = self.html_crawler.fetch(url, **mobile_kwargs)
         else:
             html_content = self.html_crawler.fetch(url, **fetch_kwargs)
-        
+
+        self._last_list_html = html_content
+
         # Parse items
         items_path = rule.get("list", {}).get("items_path", "")
         elements = self.html_crawler.parse_items(html_content, items_path)
@@ -269,6 +272,7 @@ class InfoCollectorEngine:
         
         # Fetch with browser
         html_content = self.browser_crawler.fetch(url, render_config)
+        self._last_list_html = html_content
 
         # Parse items
         items_path = rule.get("list", {}).get("items_path", "")
@@ -358,23 +362,135 @@ class InfoCollectorEngine:
         """Save items to JSON output"""
         return self.output_mgr.save(items, rule, dedup_filtered, governance_summary)
 
-    def _maybe_archive_page(self, rule: dict, items: list, html: str | None) -> dict:
+    def _absolutize(self, rule: dict, url: str) -> str:
+        if not url:
+            return url
+        base = (rule.get("source") or {}).get("url", "")
+        if not base:
+            return url
+        return urljoin(base, url)
+
+    def _discover_first_detail(self, rule: dict, list_html: str) -> dict | None:
+        cfg = rule.get("discovery") or {}
+        list_cfg = cfg.get("list") or {}
+        items_path = list_cfg.get("items_path", "")
+        if not items_path or not list_html:
+            return None
+        title_def = list_cfg.get("title") or {}
+        detail_def = list_cfg.get("detail_url") or {}
+        keywords = (cfg.get("filters") or {}).get("title_keywords") or []
+
+        selector = parsel.Selector(text=list_html)
+        css = items_path.removeprefix("css:") if items_path.startswith("css:") else items_path
+        for item in selector.css(css):
+            title_selector = title_def.get("selector", "")
+            if title_selector:
+                title = "".join(item.css(title_selector).xpath("string()").getall()).strip()
+            else:
+                title = "".join(item.xpath("string()").getall()).strip()
+            detail_selector = detail_def.get("selector", "")
+            url_sel = item.css(detail_selector) if detail_selector else item
+            attribute = detail_def.get("attribute", "href")
+            detail_url = ""
+            if url_sel:
+                first = url_sel[0] if hasattr(url_sel, "__getitem__") and len(url_sel) else None
+                if first is not None:
+                    detail_url = first.attrib.get(attribute, "")
+            if not detail_url:
+                continue
+            if keywords and not any(k in title for k in keywords):
+                continue
+            return {"title": title, "detail_url": self._absolutize(rule, detail_url)}
+        return None
+
+    def _fetch_detail_html(self, rule: dict, detail_url: str) -> str:
+        client = (rule.get("source") or {}).get("client", "desktop")
+        if client == "browser":
+            return self.browser_crawler.fetch(detail_url, rule.get("render", {}) or {})
+        return self.html_crawler.fetch(detail_url)
+
+    def _extract_detail_blocks(self, rule: dict, detail_html: str) -> tuple[str, list[dict]]:
+        archive_cfg = rule.get("archive") or {}
+        metadata = (archive_cfg.get("detail") or {}).get("metadata") or {}
+        title_selector = (metadata.get("title") or {}).get("selector") or "h1"
+        content_selector = (metadata.get("content") or {}).get("selector") or "body"
+
+        selector = parsel.Selector(text=detail_html or "")
+        title = "".join(selector.css(title_selector).xpath("string()").getall()).strip()
+
+        blocks: list[dict] = []
+        if title:
+            blocks.append({"block_id": "b1", "type": "heading", "order": 1, "text": title, "level": 1})
+        for index, para in enumerate(selector.css(f"{content_selector} p"), start=2):
+            text = "".join(para.xpath("string()").getall()).strip()
+            if text:
+                blocks.append({"block_id": f"b{index}", "type": "paragraph", "order": index, "text": text})
+        return title, blocks
+
+    def _archive_after_pipeline(self, rule: dict, items: list) -> dict:
+        archive_cfg = rule.get("archive") or {}
+        if not archive_cfg.get("enabled"):
+            return {}
+        discovery_cfg = rule.get("discovery") or {}
+        if discovery_cfg.get("enabled"):
+            candidate = self._discover_first_detail(rule, self._last_list_html or "")
+            if not candidate:
+                return {}
+            detail_html = self._fetch_detail_html(rule, candidate["detail_url"])
+            title, blocks = self._extract_detail_blocks(rule, detail_html)
+            return self._maybe_archive_page(
+                rule,
+                items,
+                html=None,
+                detail_url=candidate["detail_url"],
+                detail_html=detail_html,
+                detail_title=title or candidate["title"],
+                detail_blocks=blocks,
+            )
+        return self._maybe_archive_page(rule, items, html=None)
+
+    def _maybe_archive_page(
+        self,
+        rule: dict,
+        items: list,
+        html: str | None,
+        *,
+        detail_url: str | None = None,
+        detail_html: str | None = None,
+        detail_title: str | None = None,
+        detail_blocks: list[dict] | None = None,
+        detail_assets: list[dict] | None = None,
+    ) -> dict:
         """如果规则配置了 archive.enabled=true，组装并写出归档包与主库记录。"""
         archive_cfg = rule.get("archive") or {}
         if not archive_cfg.get("enabled"):
             return {}
 
         source = rule.get("source", {}) or {}
-        source_url = source.get("url", "")
+        entry_url = source.get("url", "")
+        if detail_url:
+            source_url = detail_url
+            final_url = detail_url
+            title = detail_title or ""
+            html_for_archive = detail_html or ""
+            blocks = detail_blocks or []
+            assets = detail_assets or []
+        else:
+            source_url = entry_url
+            final_url = entry_url
+            title = ""
+            if items and isinstance(items[0], dict):
+                title = items[0].get("title") or ""
+            html_for_archive = html or ""
+            blocks = []
+            assets = []
+
         domain = urlparse(source_url).netloc or source.get("platform", "")
-        title = ""
-        if items and isinstance(items[0], dict):
-            title = items[0].get("title") or ""
 
         archive_page = build_archive_page(
             source_url=source_url,
-            entry_url=source_url,
-            final_url=source_url,
+            entry_url=entry_url,
+            final_url=final_url,
             domain=domain,
             platform=source.get("platform"),
             subject=rule.get("subject") or source.get("subject"),
@@ -382,10 +498,10 @@ class InfoCollectorEngine:
             source_name=source.get("source_name"),
             publish_time=None,
             fetched_at=datetime.now(timezone.utc).isoformat(),
-            html=html or "",
+            html=html_for_archive,
             markdown="",
-            blocks=[],
-            assets=[],
+            blocks=blocks,
+            assets=assets,
         )
 
         package_path = self.output_mgr.save_archive_package(archive_page, rule)
@@ -494,7 +610,7 @@ class InfoCollectorEngine:
                 governance_summary=governance_result.summary,
             )
 
-            archive_info = self._maybe_archive_page(rule, items, html=None)
+            archive_info = self._archive_after_pipeline(rule, items)
 
             # Record success
             self.state_mgr.record_finish(

@@ -153,7 +153,10 @@ def test_rule_parser_accepts_archive_discovery_and_structuring_blocks():
         "discovery": {
             "enabled": True,
             "list_selector": "article",
-            "detail_url": {"selector": "a", "attribute": "href"},
+            "list": {
+                "items_path": "css:article",
+                "detail_url": {"selector": "a", "attribute": "href"},
+            },
         },
         "archive": {
             "enabled": True,
@@ -222,3 +225,22 @@ def test_rule_parser_rejects_forbidden_archive_and_structuring_config():
             )
         else:
             raise AssertionError(f"非法配置必须校验失败: {config}")
+
+
+def test_rule_parser_requires_discovery_list_when_enabled():
+    """discovery.enabled=true 必须提供 list.items_path 与 list.detail_url。"""
+    import pytest
+
+    from engine.rule_parser import RuleParser
+
+    rule = {
+        "rule_id": "discovery-bad",
+        "source_id": "discovery-bad-source",
+        "version": 1,
+        "extract": {"title": {"selector": "h1", "type": "text"}},
+        "source": {"type": "html", "platform": "x", "url": "https://x/list"},
+        "discovery": {"enabled": True, "list": {}},
+        "archive": {"enabled": True},
+    }
+    with pytest.raises(ValueError, match="discovery.list"):
+        RuleParser().validate(rule)
