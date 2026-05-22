@@ -50,6 +50,15 @@ from .state import StateManager
 from .parsers import UA
 from .archive import build_archive_page
 from .archive_store import ArchiveStore
+from .ocr_plugins import get_ocr_plugin
+
+
+def _download_image_for_archive(url: str, image_ocr_cfg: dict) -> str:
+    """复用 ImageExtractionRunner 的下载实现，避免重复实现重试/大小限制。"""
+    runner = ImageExtractionRunner(
+        {"image_extraction": {"download": image_ocr_cfg.get("download") or {}}}
+    )
+    return runner.download_image(url)
 
 
 class InfoCollectorEngine:
@@ -427,6 +436,71 @@ class InfoCollectorEngine:
                 blocks.append({"block_id": f"b{index}", "type": "paragraph", "order": index, "text": text})
         return title, blocks
 
+    def _extract_detail_assets_and_ocr(
+        self,
+        rule: dict,
+        detail_html: str,
+        detail_url: str,
+        next_index: int,
+    ) -> tuple[list[dict], list[dict]]:
+        cfg = (rule.get("archive") or {}).get("image_ocr") or {}
+        if not cfg.get("enabled"):
+            return [], []
+        images_cfg = cfg.get("images") or {}
+        selector_text = images_cfg.get("selector") or "img"
+        src_attr = images_cfg.get("src_attribute") or "src"
+        max_images = int(images_cfg.get("max_images") or 10)
+        ocr_cfg = cfg.get("ocr") or {}
+        plugin_name = ocr_cfg.get("plugin") or "tesseract"
+
+        selector = parsel.Selector(text=detail_html or "")
+        blocks: list[dict] = []
+        assets: list[dict] = []
+
+        for node in selector.css(selector_text)[:max_images]:
+            src = node.attrib.get(src_attr, "").strip()
+            if not src:
+                continue
+            absolute = urljoin(detail_url, src)
+            try:
+                local_path = _download_image_for_archive(absolute, cfg)
+            except Exception:
+                continue
+            image_block_id = f"b{next_index}"
+            ocr_block_id = f"b{next_index + 1}"
+            try:
+                ocr_result = get_ocr_plugin(plugin_name).recognize(local_path, ocr_cfg)
+                ocr_text = ocr_result.text or ""
+                manual = ocr_result.manual_review_required
+            except Exception:
+                ocr_text = ""
+                manual = True
+
+            blocks.append({
+                "block_id": image_block_id,
+                "type": "image",
+                "order": next_index,
+                "source_url": absolute,
+                "storage_uri": local_path,
+            })
+            blocks.append({
+                "block_id": ocr_block_id,
+                "type": "ocr",
+                "order": next_index + 1,
+                "parent_block_id": image_block_id,
+                "ocr_text": ocr_text,
+                "manual_review_required": manual,
+            })
+            assets.append({
+                "id": image_block_id,
+                "block_id": image_block_id,
+                "asset_type": "image",
+                "source_url": absolute,
+                "storage_uri": local_path,
+            })
+            next_index += 2
+        return blocks, assets
+
     def _archive_after_pipeline(self, rule: dict, items: list) -> dict:
         archive_cfg = rule.get("archive") or {}
         if not archive_cfg.get("enabled"):
@@ -438,6 +512,10 @@ class InfoCollectorEngine:
                 return {}
             detail_html = self._fetch_detail_html(rule, candidate["detail_url"])
             title, blocks = self._extract_detail_blocks(rule, detail_html)
+            extra_blocks, assets = self._extract_detail_assets_and_ocr(
+                rule, detail_html, candidate["detail_url"], next_index=len(blocks) + 1
+            )
+            blocks.extend(extra_blocks)
             return self._maybe_archive_page(
                 rule,
                 items,
@@ -446,6 +524,7 @@ class InfoCollectorEngine:
                 detail_html=detail_html,
                 detail_title=title or candidate["title"],
                 detail_blocks=blocks,
+                detail_assets=assets,
             )
         return self._maybe_archive_page(rule, items, html=None)
 
