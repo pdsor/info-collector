@@ -51,6 +51,53 @@ class OutputManager:
         platform = self._resolve_platform(rule)
         return os.path.join(self.base_path, subject, platform)
 
+    def save_archive_package(self, archive_page: dict, rule: dict) -> str:
+        """保存页面归档调试包。
+
+        文件包只用于调试、人工复核和资产缓存；归档主事实源后续由 PostgreSQL 承担。
+        """
+        meta = archive_page.get("meta", {})
+        content_hash = meta.get("content_hash")
+        if not content_hash:
+            raise ValueError("archive_page.meta.content_hash is required")
+
+        output_dir = self._resolve_output_dir(rule)
+        package_dir = os.path.join(output_dir, "archives", content_hash)
+        assets_dir = os.path.join(package_dir, "assets")
+        os.makedirs(assets_dir, exist_ok=True)
+
+        blocks = archive_page.get("blocks", [])
+        assets = archive_page.get("assets", [])
+        content = archive_page.get("content", {})
+        page_summary = {
+            "meta": meta,
+            "content": {
+                "html_path": archive_page.get("paths", {}).get("html", "page.html"),
+                "markdown_path": archive_page.get("paths", {}).get("markdown", "page.md"),
+            },
+            "blocks": blocks,
+            "assets": assets,
+            "paths": archive_page.get("paths", {}),
+        }
+
+        self._write_json(os.path.join(package_dir, "page.json"), page_summary)
+        self._write_text(os.path.join(package_dir, "page.html"), content.get("html", ""))
+        self._write_text(os.path.join(package_dir, "page.md"), content.get("markdown", ""))
+        self._write_json(os.path.join(package_dir, "blocks.json"), blocks)
+        self._write_json(os.path.join(assets_dir, "manifest.json"), assets)
+
+        return package_dir
+
+    def _write_json(self, path: str, data) -> None:
+        """以 UTF-8 写入 JSON 文件。"""
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+    def _write_text(self, path: str, content: str) -> None:
+        """以 UTF-8 写入文本文件。"""
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content or "")
+
     def save(self, items: list, rule: dict, dedup_filtered: int = 0) -> str:
         """Save items to JSON file and update subject-level combined_latest.json.
 
