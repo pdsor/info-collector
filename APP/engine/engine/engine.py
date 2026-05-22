@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urljoin, urlparse
 import base64
+from hashlib import sha256
 import parsel
 from .rule_parser import RuleParser
 
@@ -379,18 +380,21 @@ class InfoCollectorEngine:
             return url
         return urljoin(base, url)
 
-    def _discover_first_detail(self, rule: dict, list_html: str) -> dict | None:
+    def _discover_candidates(self, rule: dict, list_html: str) -> list[dict]:
         cfg = rule.get("discovery") or {}
         list_cfg = cfg.get("list") or {}
         items_path = list_cfg.get("items_path", "")
         if not items_path or not list_html:
-            return None
+            return []
         title_def = list_cfg.get("title") or {}
         detail_def = list_cfg.get("detail_url") or {}
         keywords = (cfg.get("filters") or {}).get("title_keywords") or []
+        max_details = int(cfg.get("max_details") or 1)
 
         selector = parsel.Selector(text=list_html)
         css = items_path.removeprefix("css:") if items_path.startswith("css:") else items_path
+        candidates: list[dict] = []
+        seen_urls: set[str] = set()
         for item in selector.css(css):
             title_selector = title_def.get("selector", "")
             if title_selector:
@@ -409,8 +413,18 @@ class InfoCollectorEngine:
                 continue
             if keywords and not any(k in title for k in keywords):
                 continue
-            return {"title": title, "detail_url": self._absolutize(rule, detail_url)}
-        return None
+            absolute = self._absolutize(rule, detail_url)
+            if absolute in seen_urls:
+                continue
+            seen_urls.add(absolute)
+            candidates.append({"title": title, "detail_url": absolute})
+            if len(candidates) >= max_details:
+                break
+        return candidates
+
+    def _discover_first_detail(self, rule: dict, list_html: str) -> dict | None:
+        candidates = self._discover_candidates(rule, list_html)
+        return candidates[0] if candidates else None
 
     def _fetch_detail_html(self, rule: dict, detail_url: str) -> str:
         client = (rule.get("source") or {}).get("client", "desktop")
@@ -507,26 +521,50 @@ class InfoCollectorEngine:
             return {}
         discovery_cfg = rule.get("discovery") or {}
         if discovery_cfg.get("enabled"):
-            candidate = self._discover_first_detail(rule, self._last_list_html or "")
-            if not candidate:
+            candidates = self._discover_candidates(rule, self._last_list_html or "")
+            if not candidates:
                 return {}
-            detail_html = self._fetch_detail_html(rule, candidate["detail_url"])
-            title, blocks = self._extract_detail_blocks(rule, detail_html)
-            extra_blocks, assets = self._extract_detail_assets_and_ocr(
-                rule, detail_html, candidate["detail_url"], next_index=len(blocks) + 1
-            )
-            blocks.extend(extra_blocks)
-            return self._maybe_archive_page(
-                rule,
-                items,
-                html=None,
-                detail_url=candidate["detail_url"],
-                detail_html=detail_html,
-                detail_title=title or candidate["title"],
-                detail_blocks=blocks,
-                detail_assets=assets,
-            )
-        return self._maybe_archive_page(rule, items, html=None)
+            seen_hashes: set[str] = set()
+            archive_pages: list[dict] = []
+            for candidate in candidates:
+                try:
+                    detail_html = self._fetch_detail_html(rule, candidate["detail_url"])
+                    title, blocks = self._extract_detail_blocks(rule, detail_html)
+                    extra_blocks, assets = self._extract_detail_assets_and_ocr(
+                        rule, detail_html, candidate["detail_url"], next_index=len(blocks) + 1
+                    )
+                    blocks.extend(extra_blocks)
+                    info = self._maybe_archive_page(
+                        rule,
+                        items,
+                        html=None,
+                        detail_url=candidate["detail_url"],
+                        detail_html=detail_html,
+                        detail_title=title or candidate["title"],
+                        detail_blocks=blocks,
+                        detail_assets=assets,
+                        seen_hashes=seen_hashes,
+                    )
+                except Exception:
+                    continue
+                if info:
+                    archive_pages.append(info)
+            if not archive_pages:
+                return {}
+            head = archive_pages[0]
+            return {
+                "archive_page_id": head["page_id"],
+                "archive_package_path": head["package_path"],
+                "archive_pages": archive_pages,
+            }
+        info = self._maybe_archive_page(rule, items, html=None)
+        if not info:
+            return {}
+        return {
+            "archive_page_id": info["page_id"],
+            "archive_package_path": info["package_path"],
+            "archive_pages": [info],
+        }
 
     def _maybe_archive_page(
         self,
@@ -539,6 +577,7 @@ class InfoCollectorEngine:
         detail_title: str | None = None,
         detail_blocks: list[dict] | None = None,
         detail_assets: list[dict] | None = None,
+        seen_hashes: set[str] | None = None,
     ) -> dict:
         """如果规则配置了 archive.enabled=true，组装并写出归档包与主库记录。"""
         archive_cfg = rule.get("archive") or {}
@@ -583,12 +622,22 @@ class InfoCollectorEngine:
             assets=assets,
         )
 
+        content_hash = (archive_page.get("meta") or {}).get("content_hash") or ""
+        body_payload = (html_for_archive or "") + "\n" + ((archive_page.get("content") or {}).get("markdown") or "")
+        body_hash = sha256(body_payload.encode("utf-8")).hexdigest()
+        if seen_hashes is not None and body_hash in seen_hashes:
+            return {}
+        if seen_hashes is not None:
+            seen_hashes.add(body_hash)
+
         package_path = self.output_mgr.save_archive_package(archive_page, rule)
         store = ArchiveStore.from_rule(rule)
         write_result = store.save_archive_page(archive_page)
         return {
-            "archive_page_id": write_result.get("page_id"),
-            "archive_package_path": package_path,
+            "page_id": write_result.get("page_id"),
+            "package_path": package_path,
+            "source_url": source_url,
+            "content_hash": content_hash,
         }
 
     def preview_rule(self, rule_path: str, limit: int = 5) -> dict:
