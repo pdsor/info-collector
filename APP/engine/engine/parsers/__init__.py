@@ -65,6 +65,24 @@ class HTMLParser:
             results.append({"href": href, "title": text})
         return results
 
+    @staticmethod
+    def extract_elements(css: str, html_content: str) -> list:
+        """CSS 选择器，提取元素 HTML、链接和文本。"""
+        sel = parsel.Selector(text=html_content)
+        results = []
+        for el in sel.css(css):
+            href = el.attrib.get("href", "")
+            if not href:
+                href = el.css("a::attr(href)").get(default="")
+            text = "".join(el.xpath("string()").getall()).strip()
+            results.append({
+                "href": href,
+                "title": text,
+                "text": text,
+                "html": el.get() or "",
+            })
+        return results
+
 
 # ── JSON 解析器 ────────────────────────────────────────────────
 class JSONParser:

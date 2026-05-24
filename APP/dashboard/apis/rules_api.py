@@ -1,6 +1,7 @@
 import subprocess
 import json
 import os
+import tempfile
 from flask import Blueprint, request, jsonify
 
 rules_bp = Blueprint("rules", __name__)
@@ -78,6 +79,49 @@ def create_rule():
         return jsonify(data)
     except json.JSONDecodeError:
         return jsonify({"success": True})
+
+
+@rules_bp.route("/preview", methods=["POST"])
+def preview_rule():
+    """POST /api/rules/preview - 使用编辑器 YAML 做沙箱试采。"""
+    body = request.get_json() or {}
+    yaml_content = body.get("yaml") or ""
+    if not yaml_content.strip():
+        return jsonify({"success": False, "error": "YAML 内容不能为空"}), 400
+
+    try:
+        limit = int(body.get("limit", 5))
+    except (TypeError, ValueError):
+        limit = 5
+    limit = max(1, min(limit, 20))
+
+    tmp_path = None
+    try:
+        import sys
+        if ENGINE_DIR not in sys.path:
+            sys.path.insert(0, ENGINE_DIR)
+        from engine.engine import InfoCollectorEngine
+
+        with tempfile.NamedTemporaryFile("w", suffix=".yaml", encoding="utf-8", delete=False) as tmp:
+            tmp.write(yaml_content)
+            tmp_path = tmp.name
+
+        engine = InfoCollectorEngine(
+            dedup_db_path=":memory:",
+            state_dir=os.path.join(ENGINE_DIR, ".preview-output"),
+        )
+        try:
+            result = engine.preview_rule(tmp_path, limit=limit)
+        finally:
+            engine.close()
+        return jsonify(result)
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"success": False, "error": str(exc)}), 200
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
 
 
 @rules_bp.route("/<path:rule_path>", methods=["DELETE"])

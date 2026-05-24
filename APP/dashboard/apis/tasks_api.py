@@ -32,6 +32,15 @@ DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 _task_states: dict[int, dict] = {}
 _task_lock = threading.Lock()
 
+STATUS_TO_NG = {
+    "running": "RUNNING",
+    "success": "SUCCESS",
+    "completed": "SUCCESS",
+    "failed": "FAILED",
+    "cancelled": "CANCELLED",
+    "partial_success": "PARTIAL_SUCCESS",
+}
+
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -66,6 +75,11 @@ def update_task(task_id: int, status: str, message: str = "", new_count: int = 0
     )
     conn.commit()
     conn.close()
+
+
+def to_ng_status(status: str) -> str:
+    """映射为 NG v2.2 任务状态。"""
+    return STATUS_TO_NG.get((status or "").lower(), "PENDING")
 
 
 def parse_event_line(line: str):
@@ -350,7 +364,12 @@ def task_history():
     )
     rows = cur.fetchall()
     conn.close()
-    return jsonify({"tasks": [dict(r) for r in rows]})
+    tasks = []
+    for row in rows:
+        item = dict(row)
+        item["ng_status"] = to_ng_status(item.get("status"))
+        tasks.append(item)
+    return jsonify({"tasks": tasks})
 
 
 @tasks_bp.route("/<int:task_id>", methods=["GET"])
@@ -363,7 +382,9 @@ def get_task(task_id):
     conn.close()
     if not row:
         return jsonify({"error": "Task not found"}), 404
-    return jsonify(dict(row))
+    item = dict(row)
+    item["ng_status"] = to_ng_status(item.get("status"))
+    return jsonify(item)
 
 
 @tasks_bp.route("/<int:task_id>/logs", methods=["GET"])

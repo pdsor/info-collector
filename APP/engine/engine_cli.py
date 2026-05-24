@@ -329,7 +329,13 @@ def enable_rule_cmd(rule_path, enabled):
 @cli.command("run-rule")
 @click.argument("rule_path")
 @click.option("--format", "fmt", default="text")
-def run_rule_cmd(rule_path, fmt):
+@click.option(
+    "--print-data",
+    type=click.Choice(["none", "raw", "deduped", "both"]),
+    default="none",
+    help="在 JSON/JSONL 输出中打印采集明细：none/raw/deduped/both",
+)
+def run_rule_cmd(rule_path, fmt, print_data):
     """手动执行单个规则
     --format=text: 人类可读输出（默认）
     --format=json: 单行 JSON 结果
@@ -340,25 +346,39 @@ def run_rule_cmd(rule_path, fmt):
     e = _engine()
     try:
         full_path = _resolve_rule_path(rule_path)
+        include_data = print_data != "none"
 
         if fmt == "jsonl":
             # JSONL 模式：engine.run 内部通过 event_handler 逐行输出事件
             def emit(line):
                 click.echo(line)
-            result = e.run(full_path, event_handler=emit)
+            result = e.run(full_path, event_handler=emit, include_data=include_data)
+            if include_data:
+                data_event = {"type": "data"}
+                if print_data in {"raw", "both"}:
+                    data_event["raw_data"] = result.get("raw_data", [])
+                if print_data in {"deduped", "both"}:
+                    data_event["deduped_data"] = result.get("deduped_data", [])
+                click.echo(json.dumps(data_event, ensure_ascii=False))
             return
 
-        result = e.run(full_path)
+        result = e.run(full_path, include_data=include_data)
         duration = time.time() - start
 
         if fmt == "json":
-            click.echo(json.dumps({
+            payload = {
                 "success": result.get("status") == "success",
                 "total_collected": result.get("total_collected", 0),
                 "dedup_filtered": result.get("dedup_filtered", 0),
                 "new_count": result.get("collected", 0),
+                "output_path": result.get("output_path"),
                 "duration": round(duration, 2),
-            }, ensure_ascii=False))
+            }
+            if print_data in {"raw", "both"}:
+                payload["raw_data"] = result.get("raw_data", [])
+            if print_data in {"deduped", "both"}:
+                payload["deduped_data"] = result.get("deduped_data", [])
+            click.echo(json.dumps(payload, ensure_ascii=False))
         else:
             total_collected = result.get("total_collected", 0)
             dedup_filtered = result.get("dedup_filtered", 0)
