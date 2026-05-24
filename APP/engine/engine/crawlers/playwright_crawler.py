@@ -219,7 +219,7 @@ class PlaywrightCrawler:
         # New format: css:<selector>
         if items_path.startswith("css:"):
             selector = items_path[4:]
-            return HTMLParser.extract_links(selector, html_content)
+            return HTMLParser.extract_elements(selector, html_content)
 
         # New format: xpath:<expr>
         if items_path.startswith("xpath:"):
@@ -229,7 +229,8 @@ class PlaywrightCrawler:
             for el in parser.xpath(expr):
                 href = el.attrib.get("href", "")
                 text = "".join(el.xpath("string()").getall()).strip()
-                results.append({"href": href, "title": text})
+                html = el.get()
+                results.append({"href": href, "title": text, "html": html})
             return results
 
         # Legacy format: regex:<pattern> (with re.DOTALL to match newlines)

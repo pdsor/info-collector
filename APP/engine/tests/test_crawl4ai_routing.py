@@ -1,28 +1,23 @@
-"""Test BrowserCrawler routing to Crawl4AI and resolve_url behavior"""
+"""Test BrowserCrawler deterministic routing and resolve_url behavior"""
 import pytest
 from unittest.mock import patch, MagicMock
 
 from engine.crawl_browser import BrowserCrawler
-from engine.crawlers import PlaywrightCrawler, Crawl4AICrawler
+from engine.crawlers import PlaywrightCrawler
 
 
 class TestCrawl4AIRouting:
-    """Test that 'browser' client routes to Crawl4AICrawler"""
+    """Test that browser routing is deterministic and AI-free."""
 
-    def test_browser_client_routes_to_crawl4ai(self):
-        """client='browser' should use Crawl4AICrawler internally"""
+    def test_browser_client_routes_to_playwright(self):
+        """client='browser' should use PlaywrightCrawler internally"""
         crawler = BrowserCrawler(client="browser")
-        assert isinstance(crawler._impl, Crawl4AICrawler)
+        assert isinstance(crawler._impl, PlaywrightCrawler)
 
-    def test_browser_and_crawl4ai_route_same_impl_type(self):
-        """client='browser' and client='crawl4ai' should route to same impl type"""
-        browser_crawler = BrowserCrawler(client="browser")
-        crawl4ai_crawler = BrowserCrawler(client="crawl4ai")
-
-        # Both should be Crawl4AICrawler instances
-        assert type(browser_crawler._impl) == type(crawl4ai_crawler._impl)
-        assert isinstance(browser_crawler._impl, Crawl4AICrawler)
-        assert isinstance(crawl4ai_crawler._impl, Crawl4AICrawler)
+    def test_crawl4ai_client_is_rejected(self):
+        """client='crawl4ai' should be rejected in v2.2"""
+        with pytest.raises(ValueError, match="Crawl4AI"):
+            BrowserCrawler(client="crawl4ai")
 
     def test_playwright_client_still_works(self):
         """client='playwright' should still use PlaywrightCrawler"""
@@ -30,10 +25,10 @@ class TestCrawl4AIRouting:
         assert isinstance(crawler._impl, PlaywrightCrawler)
 
     def test_default_client_is_browser(self):
-        """Default client should be 'browser' which routes to Crawl4AI"""
+        """Default client should be 'browser' which routes to Playwright"""
         crawler = BrowserCrawler()
         assert crawler._client == "browser"
-        assert isinstance(crawler._impl, Crawl4AICrawler)
+        assert isinstance(crawler._impl, PlaywrightCrawler)
 
     def test_resolve_url_uses_playwright_directly(self):
         """resolve_url() should call PlaywrightCrawler.resolve_url() directly"""

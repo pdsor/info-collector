@@ -1,22 +1,17 @@
-"""Browser Crawler - handles JavaScript-rendered pages and anti-bot protection
-
-This module provides a dual-routing BrowserCrawler that delegates to:
-  - PlaywrightCrawler (for Playwright-based rendering)
-  - Crawl4AICrawler (for Crawl4AI-based rendering, default when using "browser" alias)
-"""
+"""Browser Crawler - handles JavaScript-rendered pages and anti-bot protection."""
 from typing import Optional
-from .crawlers import PlaywrightCrawler, Crawl4AICrawler, USER_AGENTS
+from .crawlers import PlaywrightCrawler, USER_AGENTS
 
 
 class BrowserCrawler:
-    """Dual-routing crawler that delegates to PlaywrightCrawler or Crawl4AICrawler.
+    """确定性浏览器渲染器，仅委托 PlaywrightCrawler。
     
     Args:
-        client: "browser" (default, aliases to crawl4ai) or "playwright" or "crawl4ai"
+        client: "browser" (default, aliases to playwright) or "playwright"
     """
     
     def __init__(self, client: str = None):
-        """client: "browser" (default, aliases to crawl4ai) or "playwright" or "crawl4ai" """
+        """client: "browser" or "playwright"。"""
         self._client = client or "browser"
         self._impl: Optional[object] = None
         self._impl_type: Optional[str] = None
@@ -25,15 +20,10 @@ class BrowserCrawler:
     def _ensure_impl(self):
         """Lazy init based on current _client"""
         if self._impl_type != self._client:
-            # "browser" is an alias for "crawl4ai" (JS rendering + stealth, default)
-            if self._client == "browser":
-                effective_client = "crawl4ai"
-            else:
-                effective_client = self._client
-            if effective_client == "playwright":
+            if self._client in {"browser", "playwright"}:
                 self._impl = PlaywrightCrawler()
-            elif effective_client == "crawl4ai":
-                self._impl = Crawl4AICrawler()
+            elif self._client == "crawl4ai":
+                raise ValueError("Crawl4AI 已从 v2.2 架构移除，请使用 Playwright 规则渲染")
             else:
                 raise ValueError(f"Unknown client: {self._client}")
             self._impl_type = self._client
@@ -101,29 +91,6 @@ class BrowserCrawler:
     def extract_fields(self, html_content: str, field_defs: list) -> dict:
         """Extract fields from HTML based on field definitions"""
         return self._impl.extract_fields(html_content, field_defs)
-    
-    def extract_with_llm(self, url: str, prompt: str, schema: dict = None, strategy: str = "llm", render_config: dict = None):
-        """Extract structured content using LLM (only supported by crawl4ai client).
-        
-        Args:
-            url: URL to crawl
-            prompt: Instruction for LLM extraction
-            schema: Schema dict for structured extraction (optional)
-            strategy: "llm" (default) or "cosine" semantic filtering
-            render_config: Browser rendering config (same keys as fetch())
-        
-        Returns:
-            LLM extracted content
-            
-        Raises:
-            NotImplementedError: If called on playwright client
-        """
-        if not hasattr(self._impl, 'extract_with_llm'):
-            raise NotImplementedError(
-                f"extract_with_llm is not supported by {self._client} client. "
-                "Use 'browser' or 'crawl4ai' client to enable LLM extraction."
-            )
-        return self._impl.extract_with_llm(url, prompt, schema, strategy, render_config)
     
     def close(self):
         """Cleanup crawler resources"""
