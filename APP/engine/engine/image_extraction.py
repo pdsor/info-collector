@@ -70,6 +70,7 @@ class ImageExtractionRunner:
             return []
         self.summary["triggered"] = True
         records = []
+        next_row_id = 1
         for candidate in self.discover_images(html, page_url):
             if not self._should_process_candidate(candidate, page_url):
                 continue
@@ -85,6 +86,16 @@ class ImageExtractionRunner:
                     ocr_result,
                     self.config.get("parse") or {},
                 )
+                if (self.config.get("parse") or {}).get("renumber_rows"):
+                    for record in parsed_records:
+                        if record.get("id"):
+                            record["id"] = str(next_row_id)
+                            row_text = record.get("ocr_text") or ""
+                            parts = row_text.split(" ", 1)
+                            if parts:
+                                parts[0] = record["id"]
+                                record["ocr_text"] = " ".join(parts).strip()
+                            next_row_id += 1
                 has_structured_words = bool(((getattr(ocr_result, "structured_data", None) or {}).get("words") or []))
                 if ocr_result.empty and not has_structured_words:
                     parsed_records = [{"title": "OCR 半结构化结果", "ocr_text": ""}]

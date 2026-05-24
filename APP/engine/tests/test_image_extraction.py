@@ -56,7 +56,7 @@ class PartialPositionedImageOcrPlugin:
         return OcrResult(
             plugin=self.name,
             status="success",
-            text="",
+            text="序号 数据集名称",
             error="",
             elapsed_seconds=0.01,
             structured_data={
@@ -68,6 +68,26 @@ class PartialPositionedImageOcrPlugin:
                     {"text": "2", "left": 12, "top": 60, "width": 8, "height": 10},
                 ]
             },
+        )
+
+
+class ResetIdImageOcrPlugin:
+    name = "reset_id_image_ocr"
+    calls = 0
+
+    def recognize(self, image_path: str, config: dict) -> OcrResult:
+        ResetIdImageOcrPlugin.calls += 1
+        if ResetIdImageOcrPlugin.calls == 1:
+            cells = [["序号", "数据集名称"], ["1", "第一条"], ["2", "第二条"]]
+        else:
+            cells = [["序号", "数据集名称"], ["1", "第三条"], ["2", "第四条"]]
+        return OcrResult(
+            plugin=self.name,
+            status="success",
+            text="序号 数据集名称",
+            error="",
+            elapsed_seconds=0.01,
+            structured_data={"table_cells": cells},
         )
 
 
@@ -188,3 +208,32 @@ def test_image_extraction_marks_parse_errors_for_review(monkeypatch, tmp_path):
     assert records[0]["parse_errors"] == ["第 2 行字段不完整"]
     assert records[1]["title"] == "OCR 半结构化结果"
     assert records[1]["manual_review_required"] is True
+
+
+def test_image_extraction_can_renumber_rows_across_images(monkeypatch, tmp_path):
+    """多张图片承载同一张名单时可按输出顺序全局重编号。"""
+    ResetIdImageOcrPlugin.calls = 0
+    register_ocr_plugin(ResetIdImageOcrPlugin())
+    html = """
+    <div class="hbgov-article-content">
+      <img src="/upload/table-1.png" alt="数据清单">
+      <img src="/upload/table-2.png" alt="数据清单">
+    </div>
+    """
+
+    class FakeResponse:
+        headers = {"content-type": "image/png", "content-length": "4"}
+        content = b"fake"
+
+        def raise_for_status(self):
+            return None
+
+    monkeypatch.setattr("engine.image_extraction.requests.get", lambda *args, **kwargs: FakeResponse())
+    rule = _rule(tmp_path, plugin="reset_id_image_ocr")
+    rule["image_extraction"]["parse"]["column_order"] = ["id", "name"]
+    rule["image_extraction"]["parse"]["renumber_rows"] = True
+
+    records = ImageExtractionRunner(rule).extract(html, [], page_url="https://www.hubei.gov.cn/path/article.shtml")
+
+    assert [record["id"] for record in records] == ["1", "2", "3", "4"]
+    assert [record["name"] for record in records] == ["第一条", "第二条", "第三条", "第四条"]

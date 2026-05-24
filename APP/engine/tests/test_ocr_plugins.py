@@ -95,6 +95,14 @@ def test_tesseract_success_returns_text(monkeypatch, tmp_path):
         "engine.ocr_plugins.tesseract._call_tesseract_data",
         lambda *args, **kwargs: [{"text": "序号", "left": 10, "top": 20, "width": 30, "height": 12, "conf": 95.0}],
     )
+    monkeypatch.setattr(
+        "engine.ocr_plugins.tesseract._detect_table_grid",
+        lambda *args, **kwargs: {"rows": [0, 40, 100], "columns": [0, 80, 260]},
+    )
+    monkeypatch.setattr(
+        "engine.ocr_plugins.tesseract._recognize_table_cells",
+        lambda *args, **kwargs: [["序号", "数据集名称"], ["1", "企业登记数据集"]],
+    )
 
     result = TesseractOcrPlugin().recognize(str(image_path), {"languages": ["chi_sim", "eng"], "psm": 6})
 
@@ -102,6 +110,8 @@ def test_tesseract_success_returns_text(monkeypatch, tmp_path):
     assert result.text == "序号 | 数据名称\n1 | 企业登记数据集"
     assert result.manual_review_required is False
     assert result.structured_data["words"][0]["text"] == "序号"
+    assert result.structured_data["table_grid"]["rows"] == [0, 40, 100]
+    assert result.structured_data["table_cells"][1] == ["1", "企业登记数据集"]
 
 
 def test_tesseract_success_keeps_text_when_structured_data_fails(monkeypatch, tmp_path):
@@ -122,7 +132,7 @@ def test_tesseract_success_keeps_text_when_structured_data_fails(monkeypatch, tm
     assert result.status == "success"
     assert result.text == "序号 | 数据名称"
     assert result.manual_review_required is False
-    assert result.structured_data == {"words": []}
+    assert result.structured_data == {"words": [], "table_grid": {}, "table_cells": []}
 
 
 def test_ocr_result_to_item_fields_excludes_structured_data():

@@ -59,6 +59,72 @@ def _call_tesseract_data(image_path: str, languages: list[str], psm: int, prepro
     return words
 
 
+def _line_groups(indexes) -> list[int]:
+    groups = []
+    start = None
+    previous = None
+    for index in indexes:
+        index = int(index)
+        if start is None:
+            start = previous = index
+        elif index <= previous + 2:
+            previous = index
+        else:
+            groups.append((start + previous) // 2)
+            start = previous = index
+    if start is not None:
+        groups.append((start + previous) // 2)
+    return groups
+
+
+def _detect_table_grid(image_path: str, preprocess: dict) -> dict:
+    """从二值图片中检测表格横线和竖线。"""
+    import numpy as np
+
+    image = _prepare_image(image_path, preprocess).convert("L")
+    pixels = np.asarray(image)
+    dark = pixels < 80
+    row_counts = dark.sum(axis=1)
+    column_counts = dark.sum(axis=0)
+    row_indexes = np.where(row_counts > image.width * 0.5)[0]
+    column_indexes = np.where(column_counts > image.height * 0.5)[0]
+    rows = _line_groups(row_indexes)
+    columns = _line_groups(column_indexes)
+    if len(rows) < 3 or len(columns) < 3:
+        return {}
+    return {"rows": rows, "columns": columns, "width": image.width, "height": image.height}
+
+
+def _recognize_table_cells(image_path: str, languages: list[str], psm: int, preprocess: dict, grid: dict) -> list[list[str]]:
+    """按检测到的表格网格逐单元格 OCR。"""
+    import pytesseract
+
+    rows = grid.get("rows") or []
+    columns = grid.get("columns") or []
+    if len(rows) < 3 or len(columns) < 3:
+        return []
+
+    image = _prepare_image(image_path, preprocess).convert("L")
+    lang = "+".join(languages or ["chi_sim", "eng"])
+    config = f"--psm {int(psm or 6)}"
+    table_cells = []
+    padding = 4
+    for row_index in range(len(rows) - 1):
+        row_cells = []
+        for column_index in range(len(columns) - 1):
+            box = (
+                columns[column_index] + padding,
+                rows[row_index] + padding,
+                columns[column_index + 1] - padding,
+                rows[row_index + 1] - padding,
+            )
+            cell_image = image.crop(box)
+            text = pytesseract.image_to_string(cell_image, lang=lang, config=config).strip()
+            row_cells.append(text)
+        table_cells.append(row_cells)
+    return table_cells
+
+
 class TesseractOcrPlugin:
     """本地 Tesseract OCR 插件。"""
 
@@ -78,6 +144,14 @@ class TesseractOcrPlugin:
                 words = _call_tesseract_data(image_path, languages, psm, preprocess)
             except Exception:
                 words = []
+            try:
+                table_grid = _detect_table_grid(image_path, preprocess)
+            except Exception:
+                table_grid = {}
+            try:
+                table_cells = _recognize_table_cells(image_path, languages, psm, preprocess, table_grid)
+            except Exception:
+                table_cells = []
             status = "empty" if text == "" else "success"
             return OcrResult(
                 plugin=self.name,
@@ -85,7 +159,7 @@ class TesseractOcrPlugin:
                 text=text,
                 error="",
                 elapsed_seconds=round(time.time() - started_at, 4),
-                structured_data={"words": words},
+                structured_data={"words": words, "table_grid": table_grid, "table_cells": table_cells},
             )
         except Exception as exc:
             return OcrResult(

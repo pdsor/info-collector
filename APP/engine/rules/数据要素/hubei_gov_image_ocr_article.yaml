@@ -1,0 +1,182 @@
+rule_id: "hubei-gov-image-ocr-article"
+source_id: "hubei-gov-bmdt-article-5848087"
+version: 1
+status: TESTING
+name: "湖北省政府 - 内嵌图片文章试采"
+subject: "数据要素"
+description: "适配湖北省政府文章详情页中以内嵌图片承载表格数据的采集场景，用于规则中心试采和 OCR 链路验证。"
+enabled: true
+
+source:
+  platform: "hubei_gov"
+  subject: "数据要素"
+  type: "browser"
+  client: "browser"
+  url: "https://www.hubei.gov.cn/hbfb/bmdt/202601/t20260105_5848087.shtml"
+  auth:
+    type: "none"
+
+request:
+  method: "GET"
+  headers:
+    User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
+    Accept-Language: "zh-CN,zh;q=0.9"
+    Referer: "https://www.hubei.gov.cn/"
+
+render:
+  enabled: true
+  headless: true
+  stealth: true
+  user_agent: "random"
+  wait_for_timeout: 8000
+  wait_for_selector: ".hbgov-article-content"
+  viewport_width: 1440
+  viewport_height: 1200
+  extra_headers:
+    Accept-Language: "zh-CN,zh;q=0.9"
+    Referer: "https://www.hubei.gov.cn/"
+
+list:
+  items_path: "css:.container.hbgov-category-container"
+
+extract:
+  title:
+    selector: ".hbgov-article-title h1"
+    type: "text"
+  publish_time:
+    selector: ".hbgov-article-meta-time"
+    type: "text"
+  source_name:
+    selector: ".hbgov-article-meta-source"
+    type: "text"
+  article_text:
+    selector: ".hbgov-article-content .view"
+    type: "text"
+  article_html:
+    selector: ".hbgov-article-content .view"
+    type: "html"
+
+image_extraction:
+  enabled: true
+  output_mode: "ocr_rows_only"
+  trigger:
+    when_empty: false
+    domains:
+      - "hubei.gov.cn"
+    img_keywords:
+      - "数据"
+      - "清单"
+      - "目录"
+      - "表"
+      - "附件"
+      - "png"
+      - "jpg"
+      - "jpeg"
+  images:
+    selector: ".hbgov-article-content img"
+    src_attribute: "src"
+    include_alt: true
+    max_images: 20
+  download:
+    dir_template: "/tmp/scraper_imgs/{task_id}"
+    retries: 3
+    retry_interval_seconds: 2
+    timeout_seconds: 20
+    max_size_mb: 8
+  ocr:
+    plugin: "tesseract"
+    languages:
+      - "chi_sim"
+      - "eng"
+    psm: 6
+    preprocess:
+      grayscale: true
+      threshold: true
+      resize_ratio: 2
+  parse:
+    mode: "table"
+    column_order:
+      - "id"
+      - "name"
+      - "data_item"
+      - "category"
+      - "department"
+    renumber_rows: true
+    delimiters:
+      - "|"
+      - "\t"
+      - ","
+      - "，"
+    column_mapping:
+      序号: "id"
+      编号: "id"
+      数据名称: "name"
+      数据资源名称: "name"
+      数据集名称: "name"
+      事项名称: "name"
+      数据项: "data_item"
+      数据内容: "data_item"
+      数据摘要: "summary"
+      责任单位: "department"
+      提供单位: "department"
+      发布单位: "department"
+      所属部门: "department"
+      所属领域: "category"
+      数据领域: "category"
+      类别: "category"
+      发布时间: "publish_time"
+      更新日期: "publish_time"
+      公开属性: "open_type"
+      开放类型: "open_type"
+      共享类型: "share_type"
+      备注: "remark"
+  fallback:
+    ocr_unavailable: "manual_review"
+    ocr_empty: "manual_review"
+    parse_failed: "semi_structured"
+
+dedup:
+  incremental: false
+
+governance:
+  sanitize: true
+  dedup: hash
+  required_fields:
+    - "id"
+    - "name"
+  min_completeness: 0.2
+
+output:
+  format: "json"
+  fields:
+    - "id"
+    - "name"
+    - "data_item"
+    - "summary"
+    - "department"
+    - "category"
+    - "publish_time"
+    - "open_type"
+    - "share_type"
+    - "remark"
+    - "title"
+    - "source_name"
+    - "article_text"
+    - "source_url"
+    - "source_img_url"
+    - "source_img_path"
+    - "source_img_alt"
+    - "ocr_plugin"
+    - "ocr_engine"
+    - "ocr_text"
+    - "ocr_empty"
+    - "semi_structured"
+    - "manual_review_required"
+    - "parse_errors"
+  save_raw: false
+  filename_template: "hubei_gov_image_ocr_article_{date}.json"
+
+alert:
+  on_failure: true
+  retry_times: 2
