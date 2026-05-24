@@ -466,7 +466,8 @@ def test_save_archive_page_writes_page_blocks_assets_and_ocr_in_one_transaction(
         "block_ids": {"img-001": "archive_blocks-2", "ocr-001": "archive_blocks-3"},
         "asset_ids": {"asset-img-001": "archive_assets-4"},
         "ocr_result_ids": ["ocr_results-5"],
-        "counts": {"pages": 1, "blocks": 2, "assets": 1, "ocr_results": 1},
+        "structured_record_ids": [],
+        "counts": {"pages": 1, "blocks": 2, "assets": 1, "ocr_results": 1, "structured_records": 0},
     }
     assert [call["table"] for call in fake_connection.calls] == [
         "archive_pages",

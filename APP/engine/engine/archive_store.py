@@ -118,6 +118,24 @@ OCR_RESULTS = Table(
     Column("manual_review_required", Boolean),
 )
 
+STRUCTURED_RECORDS = Table(
+    "structured_records",
+    ARCHIVE_METADATA,
+    Column(
+        "id",
+        UUID(as_uuid=False),
+        primary_key=True,
+        server_default=sql_text("gen_random_uuid()"),
+    ),
+    Column("page_id", UUID(as_uuid=False)),
+    Column("source_block_id", UUID(as_uuid=False)),
+    Column("record_type", Text),
+    Column("data", JSONB),
+    Column("raw_columns", JSONB),
+    Column("confidence", Numeric),
+    Column("status", Text),
+)
+
 
 class ArchiveStore:
     """页面归档存储的最小契约实现。"""
@@ -370,17 +388,30 @@ class ArchiveStore:
                     )
                 )
 
+            structured_record_ids = []
+            for sr in archive_page.get("structured_records", []) or []:
+                sr_payload = self.build_structured_record_payload(page_id, sr)
+                sr_payload.pop("id", None)
+                src_block_id = sr_payload.get("source_block_id")
+                if src_block_id in block_id_map:
+                    sr_payload["source_block_id"] = block_id_map[src_block_id]
+                structured_record_ids.append(
+                    self._insert_returning_id(connection, STRUCTURED_RECORDS, sr_payload)
+                )
+
             transaction.commit()
             return {
                 "page_id": page_id,
                 "block_ids": block_id_map,
                 "asset_ids": asset_id_map,
                 "ocr_result_ids": ocr_result_ids,
+                "structured_record_ids": structured_record_ids,
                 "counts": {
                     "pages": 1,
                     "blocks": len(block_id_map),
                     "assets": len(asset_id_map),
                     "ocr_results": len(ocr_result_ids),
+                    "structured_records": len(structured_record_ids),
                 },
             }
         except Exception:

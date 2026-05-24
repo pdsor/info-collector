@@ -52,6 +52,7 @@ from .parsers import UA
 from .archive import build_archive_page
 from .archive_store import ArchiveStore
 from .ocr_plugins import get_ocr_plugin
+from .structuring import run_structuring
 
 
 def _download_image_for_archive(url: str, image_ocr_cfg: dict) -> str:
@@ -631,6 +632,14 @@ class InfoCollectorEngine:
             seen_hashes.add(body_hash)
 
         package_path = self.output_mgr.save_archive_package(archive_page, rule)
+
+        structured_records = run_structuring(
+            archive_page.get("blocks") or [],
+            rule.get("structuring") or {},
+        )
+        if structured_records:
+            archive_page["structured_records"] = structured_records
+
         store = ArchiveStore.from_rule(rule)
         write_result = store.save_archive_page(archive_page)
         return {
