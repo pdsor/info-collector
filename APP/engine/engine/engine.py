@@ -381,6 +381,38 @@ class InfoCollectorEngine:
             return url
         return urljoin(base, url)
 
+    def _collect_list_htmls(self, rule: dict, initial_html: str) -> list[str]:
+        """返回初始页及按 next-page 链接抓取的后续页 HTML 列表。"""
+        discovery_cfg = rule.get("discovery") or {}
+        pagination = discovery_cfg.get("pagination") or {}
+        if not pagination.get("enabled"):
+            return [initial_html] if initial_html else []
+        max_pages = int(pagination.get("max_pages") or 1)
+        next_cfg = pagination.get("next_page") or {}
+        selector = next_cfg.get("selector") or ""
+        attribute = next_cfg.get("attribute") or "href"
+        if not selector:
+            return [initial_html] if initial_html else []
+
+        pages = [initial_html]
+        current_html = initial_html
+        base_url = (rule.get("source") or {}).get("url") or ""
+        for _ in range(max_pages - 1):
+            sel = parsel.Selector(text=current_html)
+            nodes = sel.css(selector)
+            if not nodes:
+                break
+            next_url = nodes[0].attrib.get(attribute, "")
+            if not next_url:
+                break
+            next_url = urljoin(base_url, next_url)
+            try:
+                current_html = self._fetch_detail_html(rule, next_url)
+            except Exception:
+                break
+            pages.append(current_html)
+        return pages
+
     def _discover_candidates(self, rule: dict, list_html: str) -> list[dict]:
         cfg = rule.get("discovery") or {}
         list_cfg = cfg.get("list") or {}
@@ -522,7 +554,21 @@ class InfoCollectorEngine:
             return {}
         discovery_cfg = rule.get("discovery") or {}
         if discovery_cfg.get("enabled"):
-            candidates = self._discover_candidates(rule, self._last_list_html or "")
+            list_htmls = self._collect_list_htmls(rule, self._last_list_html or "")
+            # Aggregate candidates across pages, deduplicating URLs
+            discovery_cfg_local = rule.get("discovery") or {}
+            max_details = int(discovery_cfg_local.get("max_details") or 1)
+            seen_urls: set[str] = set()
+            candidates: list[dict] = []
+            for html in list_htmls:
+                for c in self._discover_candidates(rule, html):
+                    if c["detail_url"] not in seen_urls:
+                        seen_urls.add(c["detail_url"])
+                        candidates.append(c)
+                    if len(candidates) >= max_details:
+                        break
+                if len(candidates) >= max_details:
+                    break
             if not candidates:
                 return {}
             seen_hashes: set[str] = set()
