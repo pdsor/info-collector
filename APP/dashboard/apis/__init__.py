@@ -7,8 +7,8 @@ def register_blueprints(app, scheduler):
     from APP.dashboard.apis.source_api import sources_bp
     from APP.dashboard.apis.governance_api import governance_bp
     from APP.dashboard.apis.archive_api import archive_bp
+    from APP.dashboard.apis.health_api import health_bp
 
-    # Inject scheduler into cron_api before any requests arrive
     set_scheduler(scheduler)
 
     app.register_blueprint(rules_bp, url_prefix="/api/rules")
@@ -19,3 +19,4 @@ def register_blueprints(app, scheduler):
     app.register_blueprint(sources_bp, url_prefix="/api/sources")
     app.register_blueprint(governance_bp, url_prefix="/api/governance")
     app.register_blueprint(archive_bp, url_prefix="/api/archives")
+    app.register_blueprint(health_bp, url_prefix="/api/health")

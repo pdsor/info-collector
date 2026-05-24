@@ -4,6 +4,8 @@ import re
 from dataclasses import dataclass
 from html import unescape
 
+from .simhash import fingerprint as simhash_fingerprint, is_near_duplicate
+
 
 INJECTION_PATTERNS = [
     "ignore previous instructions",
@@ -35,16 +37,27 @@ class GovernancePipeline:
 
     def process(self, items: list[dict]) -> GovernanceResult:
         """处理采集结果并返回治理摘要。"""
+        dedup_mode = self.config.get("dedup", "")
+        simhash_threshold = int(self.config.get("simhash_threshold", 3))
         cleaned_items = []
-        seen_hashes = set()
+        seen_hashes: set[str] = set()
+        seen_fingerprints: list[int] = []
         duplicate_count = 0
         injection_risk_count = 0
         completeness_values = []
 
         for item in items:
             cleaned = self._clean_item(item)
-            content_hash = self._content_hash(cleaned)
-            if self.config.get("dedup") in {"hash", "simhash", "minhash"}:
+
+            if dedup_mode == "simhash":
+                item_text = self._item_text(cleaned)
+                fp = simhash_fingerprint(item_text)
+                if any(is_near_duplicate(fp, seen, simhash_threshold) for seen in seen_fingerprints):
+                    duplicate_count += 1
+                    continue
+                seen_fingerprints.append(fp)
+            elif dedup_mode in {"hash", "minhash"}:
+                content_hash = self._content_hash(cleaned)
                 if content_hash in seen_hashes:
                     duplicate_count += 1
                     continue
@@ -57,6 +70,7 @@ class GovernancePipeline:
 
             completeness = self._field_completeness(cleaned)
             completeness_values.append(completeness)
+            content_hash = self._content_hash(cleaned)
             cleaned["_governance"] = {
                 "content_hash": content_hash,
                 "field_completeness": completeness,
@@ -78,6 +92,13 @@ class GovernancePipeline:
             "status": status,
         }
         return GovernanceResult(items=cleaned_items, summary=summary, status=status)
+
+    def _item_text(self, item: dict) -> str:
+        """把 item 的所有字符串值拼成一段文本，用于 SimHash 指纹。"""
+        return " ".join(
+            str(v) for k, v in item.items()
+            if not k.startswith("_") and isinstance(v, str)
+        )
 
     def _clean_item(self, item: dict) -> dict:
         """清洗单条记录。"""

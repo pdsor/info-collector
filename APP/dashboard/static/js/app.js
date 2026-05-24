@@ -249,6 +249,27 @@ const RuleCenter = {
             }
         };
 
+        const healthChecking = ref(false);
+        const healthResult = ref(null);
+        const checkHealth = async () => {
+            if (!yaml.value.trim()) return;
+            healthChecking.value = true;
+            healthResult.value = null;
+            message.value = '';
+            try {
+                let ruleObj = null;
+                try { ruleObj = jsyaml.load(yaml.value); } catch (e) { message.value = `YAML 解析失败：${e.message}`; return; }
+                const data = await API.post('/health/check', { rule: ruleObj });
+                healthResult.value = data;
+                const score = Math.round((data.health_score || 0) * 100);
+                message.value = `健康度检测：${score}% (${data.working_selectors}/${data.total_selectors} 选择器有效)`;
+            } catch (err) {
+                message.value = `健康检测失败：${err.message}`;
+            } finally {
+                healthChecking.value = false;
+            }
+        };
+
         const toggleRule = async (rule) => {
             await API.post(`/rules/${encodeURIComponent(rule.path)}/toggle`, { enabled: !rule.enabled });
             await loadRules();
@@ -262,7 +283,7 @@ const RuleCenter = {
         onMounted(loadRules);
         const prettyJson = (value) => JSON.stringify(value, null, 2);
 
-        return { rules, selected, yaml, message, loading, previewing, previewResult, loadRules, editRule, newRule, formatRuleYaml, saveRule, previewRule, toggleRule, runRule, prettyJson };
+        return { rules, selected, yaml, message, loading, previewing, previewResult, healthChecking, healthResult, loadRules, editRule, newRule, formatRuleYaml, saveRule, previewRule, checkHealth, toggleRule, runRule, prettyJson };
     },
     template: `
 <section class="console-view split-view">
@@ -301,6 +322,7 @@ const RuleCenter = {
       <div class="actions">
         <button :disabled="!yaml.trim()" @click="formatRuleYaml">格式化</button>
         <button :disabled="!selected || loading || previewing" @click="previewRule">试采</button>
+        <button :disabled="!yaml.trim() || healthChecking" @click="checkHealth">健康检测</button>
         <button :disabled="!selected || loading" @click="saveRule">保存</button>
       </div>
     </div>
