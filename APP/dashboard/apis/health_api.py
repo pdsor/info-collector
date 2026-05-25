@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import sys
+from datetime import datetime, timezone
 
 import parsel
 from flask import Blueprint, jsonify, request
@@ -12,8 +13,40 @@ health_bp = Blueprint("health", __name__)
 DASHBOARD_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APP_DIR = os.path.dirname(DASHBOARD_DIR)
 ENGINE_DIR = os.path.join(APP_DIR, "engine")
+RULES_DIR = os.path.join(ENGINE_DIR, "rules")
 if ENGINE_DIR not in sys.path:
     sys.path.insert(0, ENGINE_DIR)
+
+
+# ── DOM sidecar helpers ───────────────────────────────────────────────────────
+
+def _sidecar_path(rule_path: str) -> str | None:
+    """rule_path (相对 ENGINE_DIR 或绝对路径) → sidecar .health.json 路径。"""
+    if not rule_path:
+        return None
+    if not os.path.isabs(rule_path):
+        rule_path = os.path.join(ENGINE_DIR, rule_path)
+    return rule_path + ".health.json"
+
+
+def _load_sidecar(rule_path: str) -> dict:
+    sp = _sidecar_path(rule_path)
+    if not sp or not os.path.exists(sp):
+        return {}
+    try:
+        with open(sp, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_sidecar(rule_path: str, data: dict) -> None:
+    sp = _sidecar_path(rule_path)
+    if not sp:
+        return
+    os.makedirs(os.path.dirname(sp), exist_ok=True)
+    with open(sp, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 
 def _dom_structure_hash(html: str) -> str:
@@ -112,4 +145,42 @@ def health_check():
             return jsonify({"error": f"fetch failed: {exc}"}), 502
 
     report = _run_health_check(rule, html)
+
+    # DOM drift comparison against stored baseline
+    rule_path = body.get("rule_path") or ""
+    sidecar = _load_sidecar(rule_path) if rule_path else {}
+    baseline_hash = sidecar.get("dom_baseline_hash")
+    report["dom_baseline_hash"] = baseline_hash
+    report["baseline_set_at"] = sidecar.get("baseline_set_at")
+    report["dom_drifted"] = bool(
+        baseline_hash and baseline_hash != report["dom_structure_hash"]
+    )
+
+    # Auto-persist last check result to sidecar
+    if rule_path:
+        sidecar["last_dom_hash"] = report["dom_structure_hash"]
+        sidecar["last_health_score"] = report["health_score"]
+        sidecar["last_checked_at"] = datetime.now(timezone.utc).isoformat()
+        _save_sidecar(rule_path, sidecar)
+
     return jsonify(report)
+
+
+@health_bp.route("/set-baseline", methods=["POST"])
+def set_baseline():
+    """POST /api/health/set-baseline
+
+    Body: { "rule_path": "rules/subject/rule.yaml", "html": "..." }
+    使用当前页面 DOM 哈希作为今后漂移检测的基线。
+    """
+    body = request.get_json(silent=True) or {}
+    rule_path = body.get("rule_path")
+    if not rule_path:
+        return jsonify({"error": "rule_path is required"}), 400
+    html = body.get("html", "")
+    dom_hash = _dom_structure_hash(html)
+    sidecar = _load_sidecar(rule_path)
+    sidecar["dom_baseline_hash"] = dom_hash
+    sidecar["baseline_set_at"] = datetime.now(timezone.utc).isoformat()
+    _save_sidecar(rule_path, sidecar)
+    return jsonify({"dom_baseline_hash": dom_hash, "rule_path": rule_path})

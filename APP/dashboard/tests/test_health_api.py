@@ -17,6 +17,14 @@ SAMPLE_HTML = """
 </body></html>
 """
 
+HTML_V2 = """
+<html><body>
+  <div class="article-list">
+    <article><h2>新闻标题</h2></article>
+  </div>
+</body></html>
+"""
+
 RULE = {
     "name": "test",
     "source": {"type": "html", "platform": "example", "url": "https://example.com/list"},
@@ -51,17 +59,9 @@ def test_health_check_broken_selector_lowers_score():
 
 
 def test_health_check_dom_hash_changes_on_restructure():
-    """不同结构的页面应产生不同的 DOM 结构哈希。"""
-    html_v2 = """
-    <html><body>
-      <div class="article-list">
-        <article><h2>新闻标题</h2></article>
-      </div>
-    </body></html>
-    """
     client = app.test_client()
     r1 = client.post("/api/health/check", json={"rule": RULE, "html": SAMPLE_HTML}).get_json()
-    r2 = client.post("/api/health/check", json={"rule": RULE, "html": html_v2}).get_json()
+    r2 = client.post("/api/health/check", json={"rule": RULE, "html": HTML_V2}).get_json()
     assert r1["dom_structure_hash"] != r2["dom_structure_hash"]
 
 
@@ -72,9 +72,50 @@ def test_health_check_requires_rule():
 
 
 def test_health_check_empty_rule_selectors_returns_full_score():
-    """规则没有声明任何选择器时，健康分为 1.0（无可测项）。"""
     empty_rule = {"name": "empty", "source": {"url": "https://x.com"}}
     client = app.test_client()
     resp = client.post("/api/health/check", json={"rule": empty_rule, "html": SAMPLE_HTML})
     assert resp.status_code == 200
     assert resp.get_json()["health_score"] == 1.0
+
+
+def test_set_baseline_stores_dom_hash(tmp_path, monkeypatch):
+    import APP.dashboard.apis.health_api as ha
+    monkeypatch.setattr(ha, "ENGINE_DIR", str(tmp_path))
+    client = app.test_client()
+    rule_path = "rules/test_rule.yaml"
+    resp = client.post("/api/health/set-baseline", json={"rule_path": rule_path, "html": SAMPLE_HTML})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["dom_baseline_hash"]
+    sidecar_path = os.path.join(str(tmp_path), rule_path + ".health.json")
+    assert os.path.exists(sidecar_path)
+    with open(sidecar_path) as f:
+        saved = json.load(f)
+    assert saved["dom_baseline_hash"] == data["dom_baseline_hash"]
+
+
+def test_health_check_detects_dom_drift(tmp_path, monkeypatch):
+    import APP.dashboard.apis.health_api as ha
+    monkeypatch.setattr(ha, "ENGINE_DIR", str(tmp_path))
+    client = app.test_client()
+    rule_path = "rules/drift_rule.yaml"
+    # Set baseline with SAMPLE_HTML
+    client.post("/api/health/set-baseline", json={"rule_path": rule_path, "html": SAMPLE_HTML})
+    # Check with different HTML → drift detected
+    resp = client.post("/api/health/check", json={"rule": RULE, "html": HTML_V2, "rule_path": rule_path})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["dom_drifted"] is True
+    assert data["baseline_set_at"] is not None
+
+
+def test_health_check_no_drift_when_html_unchanged(tmp_path, monkeypatch):
+    import APP.dashboard.apis.health_api as ha
+    monkeypatch.setattr(ha, "ENGINE_DIR", str(tmp_path))
+    client = app.test_client()
+    rule_path = "rules/nodrift_rule.yaml"
+    client.post("/api/health/set-baseline", json={"rule_path": rule_path, "html": SAMPLE_HTML})
+    resp = client.post("/api/health/check", json={"rule": RULE, "html": SAMPLE_HTML, "rule_path": rule_path})
+    data = resp.get_json()
+    assert data["dom_drifted"] is False

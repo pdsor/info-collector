@@ -65,8 +65,25 @@ def _source_from_rule(path: str, rule: dict) -> dict:
     }
 
 
+def _quality_trust_score(platform: str, conn) -> float | None:
+    """从 governance_records 计算最近 20 次运行的平均质量分，作为信任分依据。"""
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT quality_score FROM governance_records WHERE platform = ? "
+            "ORDER BY created_at DESC LIMIT 20",
+            (platform,),
+        )
+        rows = cur.fetchall()
+        if not rows:
+            return None
+        return round(sum(r["quality_score"] for r in rows) / len(rows), 4)
+    except Exception:
+        return None
+
+
 def sync_sources_from_rules() -> list[dict]:
-    """从 YAML 规则派生 Source Registry。"""
+    """从 YAML 规则派生 Source Registry，信任分混合历史质量数据。"""
     records = []
     for path in _iter_rule_files():
         try:
@@ -81,6 +98,12 @@ def sync_sources_from_rules() -> list[dict]:
     conn = get_db()
     cur = conn.cursor()
     for record in records:
+        platform = (record.get("rule_path") or "").replace("\\", "/").split("/")[-1].replace(".yaml", "").replace(".yml", "")
+        historical_quality = _quality_trust_score(platform, conn)
+        if historical_quality is not None:
+            # 混合：60% 历史质量分 + 40% 基准分（启用→0.85，停用→0.3）
+            base = 0.85 if record["enabled"] else 0.3
+            record["trust_score"] = round(0.6 * historical_quality + 0.4 * base, 4)
         cur.execute(
             """
             INSERT INTO sources (
