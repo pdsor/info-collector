@@ -1,0 +1,326 @@
+:root {
+  --srop-page-bg: #f3f6fb;
+  --srop-container-bg: #ffffff;
+  --srop-sider-bg: #001529;
+  --srop-text: #111827;
+  --srop-text-body: #1f2937;
+  --srop-text-muted: #4b5563;
+  --srop-text-dim: #6b7280;
+  --srop-border: #e5e7eb;
+  --srop-border-light: #eef2f7;
+  --srop-primary: #2563eb;
+  --srop-success: #0e9f6e;
+  --srop-error: #dc2626;
+  --srop-warning: #d97706;
+  --srop-orange: #ea580c;
+  --srop-purple: #7c3aed;
+  --srop-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+  --srop-font:
+    "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
+    -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Noto Sans SC", sans-serif;
+  --srop-font-mono:
+    "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--srop-font);
+  background: var(--srop-page-bg);
+  color: var(--srop-text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+/* —— 页面骨架 —— */
+.srop-page {
+  padding: 18px 20px 28px;
+  min-width: 1180px;
+}
+
+.srop-page-content {
+  background: var(--srop-page-bg);
+  min-height: calc(100vh - 56px);
+}
+
+.srop-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.srop-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.srop-page-title {
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+  color: var(--srop-text);
+  margin: 0;
+}
+
+.srop-page-description {
+  margin: 2px 0 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--srop-text-dim);
+}
+
+.srop-page-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* —— 区块/卡片 —— */
+.srop-section + .srop-section,
+.srop-search-card + .srop-table-card,
+.srop-section,
+.srop-table-card {
+  margin-bottom: 14px;
+}
+
+.srop-section:last-child,
+.srop-table-card:last-child {
+  margin-bottom: 0;
+}
+
+.srop-search-card,
+.srop-table-card {
+  border-radius: 8px;
+}
+
+.srop-search-card :deep(.ant-card-body),
+.srop-table-card :deep(.ant-card-body) {
+  padding: 16px 18px;
+}
+
+.srop-search-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 14px;
+  align-items: flex-end;
+}
+
+.srop-search-form .ant-form-item {
+  margin-bottom: 0;
+}
+
+/* —— 表格上方区域 —— */
+.srop-table-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 0 12px;
+}
+
+.srop-table-header-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--srop-text);
+}
+
+.srop-table-total {
+  font-size: 13px;
+  color: var(--srop-text-dim);
+  margin-left: 8px;
+  font-weight: 400;
+}
+
+.srop-table-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* —— 指标卡片网格 —— */
+.srop-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.srop-metric-card {
+  padding: 14px 16px;
+  background: var(--srop-container-bg);
+  border: 1px solid var(--srop-border-light);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.srop-metric-label {
+  font-size: 12px;
+  color: var(--srop-text-dim);
+}
+
+.srop-metric-value {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--srop-text);
+  font-family: var(--srop-font-mono);
+  letter-spacing: -0.01em;
+}
+
+/* —— 详情信息网格 —— */
+.srop-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px 28px;
+}
+
+.srop-info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.srop-info-label {
+  font-size: 13px;
+  color: var(--srop-text-dim);
+}
+
+.srop-info-value {
+  font-size: 13px;
+  color: var(--srop-text-body);
+  word-break: break-all;
+}
+
+.srop-text-block {
+  padding: 10px 12px;
+  background: #f8fafd;
+  border: 1px solid var(--srop-border-light);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--srop-text-body);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* —— 代码块 —— */
+.srop-code-block {
+  font-family: var(--srop-font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 12px 14px;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 6px;
+  overflow: auto;
+  max-height: 420px;
+  white-space: pre;
+}
+
+.srop-code-block.light {
+  background: #f8fafd;
+  color: #1f2937;
+}
+
+/* —— 信任分进度条 —— */
+.srop-score-bar {
+  display: inline-block;
+  width: 86px;
+  height: 6px;
+  background: #e4e7ec;
+  border-radius: 999px;
+  overflow: hidden;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+
+.srop-score-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--srop-primary);
+}
+
+/* —— 编辑页固定操作栏 —— */
+.srop-fixed-actions {
+  position: sticky;
+  bottom: 0;
+  background: var(--srop-container-bg);
+  border-top: 1px solid var(--srop-border-light);
+  padding: 12px 18px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* —— Drawer footer 工具栏 —— */
+.srop-drawer-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* —— 日志事件流 —— */
+.srop-log-stream {
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: var(--srop-font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  padding: 12px 14px;
+  border-radius: 6px;
+  max-height: 320px;
+  min-height: 160px;
+  overflow: auto;
+}
+
+.srop-log-line {
+  padding: 2px 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.srop-log-line.error {
+  color: #fda4af;
+}
+
+.srop-log-line.done {
+  color: #86efac;
+}
+
+.srop-log-line.skip {
+  color: #fcd34d;
+}
+
+/* —— 空态 —— */
+.srop-empty {
+  padding: 36px 16px;
+  text-align: center;
+  color: var(--srop-text-dim);
+}
+
+/* —— 详情两栏 —— */
+.srop-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: flex-start;
+}
+
+@media (max-width: 1400px) {
+  .srop-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

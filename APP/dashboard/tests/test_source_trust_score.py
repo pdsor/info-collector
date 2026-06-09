@@ -136,3 +136,48 @@ def test_sync_sources_uses_default_when_no_history(monkeypatch, tmp_path):
     records = sa.sync_sources_from_rules()
     assert len(records) == 1
     assert records[0]["trust_score"] == 0.85
+
+
+def test_sync_sources_removes_sources_without_current_yaml(monkeypatch, tmp_path):
+    """同步来源时应删除已无对应 YAML 的旧规则来源。"""
+    import yaml
+    from APP.dashboard.apis import source_api as sa
+
+    rules_dir = tmp_path / "rules"
+    rules_dir.mkdir()
+    (rules_dir / "current.yaml").write_text(yaml.dump({
+        "name": "当前来源",
+        "source": {"type": "html", "platform": "current", "url": "https://current.example.com"},
+    }, allow_unicode=True), encoding="utf-8")
+
+    db_path = str(tmp_path / "dashboard.db")
+    db = _make_db(str(tmp_path))
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        INSERT INTO sources (
+            id, name, domain, type, category, trust_score, update_frequency,
+            anti_crawl_level, parser_strategy, auth_required, language, tags,
+            enabled, lifecycle_status, rule_path
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "rules/old/deleted.yaml", "旧来源", "", "website", "", 0.85, 3600,
+            "low", "html", 0, "zh-CN", "[]", 1, "ACTIVE", "rules/old/deleted.yaml",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(sa, "RULES_DIR", str(rules_dir))
+    monkeypatch.setattr(sa, "DB_PATH", db_path)
+
+    records = sa.sync_sources_from_rules()
+    assert len(records) == 1
+
+    conn = sqlite3.connect(db_path)
+    rows = conn.execute("SELECT name, rule_path FROM sources ORDER BY name").fetchall()
+    conn.close()
+    assert len(rows) == 1
+    assert rows[0][0] == "当前来源"
+    assert rows[0][1].replace("\\", "/").endswith("rules/current.yaml")

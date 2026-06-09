@@ -89,9 +89,39 @@ scheduler.start()
 app.logger.info("Dashboard server started, scheduler running")
 
 
+DIST_DIR = os.path.join(APP_DIR, "static", "dist")
+
+
+def _dist_ready() -> bool:
+    return os.path.isfile(os.path.join(DIST_DIR, "index.html"))
+
+
 @app.route("/")
 def index():
-    return send_from_directory("static", "index.html")
+    """服务 Vite 构建产物 index.html。"""
+    if not _dist_ready():
+        return ("Frontend build missing. Run `cd APP/dashboard/web && npm run build`.", 503)
+    return send_from_directory(DIST_DIR, "index.html")
+
+
+@app.route("/assets/<path:filename>")
+def vite_assets(filename: str):
+    """Vite 构建后的静态资源（JS/CSS/字体等）。"""
+    assets_dir = os.path.join(DIST_DIR, "assets")
+    return send_from_directory(assets_dir, filename)
+
+
+@app.route("/<path:filename>")
+def dist_root_files(filename: str):
+    """兜底：根级静态文件优先 dist，无文件时回落到 index.html（交给 vue-router）。"""
+    if filename.startswith("api/"):
+        return ("Not Found", 404)
+    dist_path = os.path.join(DIST_DIR, filename)
+    if os.path.isfile(dist_path):
+        return send_from_directory(DIST_DIR, filename)
+    if _dist_ready():
+        return send_from_directory(DIST_DIR, "index.html")
+    return ("Not Found", 404)
 
 
 if __name__ == "__main__":

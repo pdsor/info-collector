@@ -125,6 +125,28 @@ def _recognize_table_cells(image_path: str, languages: list[str], psm: int, prep
     return table_cells
 
 
+def _format_table_cells(cells: list[list[str]]) -> str:
+    """把逐单元格 OCR 结果格式化为 Markdown 表格文本。"""
+    if not cells:
+        return ""
+    column_count = max(len(row) for row in cells)
+    normalized = []
+    for row in cells:
+        normalized.append([
+            " ".join(str(cell or "").split())
+            for cell in row + [""] * (column_count - len(row))
+        ])
+    header = normalized[0]
+    body = normalized[1:]
+    lines = [
+        "| " + " | ".join(header) + " |",
+        "| " + " | ".join(["---"] * column_count) + " |",
+    ]
+    for row in body:
+        lines.append("| " + " | ".join(row) + " |")
+    return "\n".join(lines)
+
+
 class TesseractOcrPlugin:
     """本地 Tesseract OCR 插件。"""
 
@@ -152,6 +174,10 @@ class TesseractOcrPlugin:
                 table_cells = _recognize_table_cells(image_path, languages, psm, preprocess, table_grid)
             except Exception:
                 table_cells = []
+            if (config or {}).get("prefer_table_cells_text") and table_cells:
+                table_text = _format_table_cells(table_cells)
+                if table_text:
+                    text = table_text
             status = "empty" if text == "" else "success"
             return OcrResult(
                 plugin=self.name,

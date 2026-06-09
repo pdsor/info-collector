@@ -7,6 +7,8 @@ from urllib.parse import urlparse
 import yaml
 from flask import Blueprint, jsonify
 
+from APP.dashboard.apis.rule_scope import normalize_rule_path
+
 sources_bp = Blueprint("sources", __name__)
 
 DASHBOARD_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -97,6 +99,7 @@ def sync_sources_from_rules() -> list[dict]:
 
     conn = get_db()
     cur = conn.cursor()
+    current_rule_paths = {normalize_rule_path(record["rule_path"]) for record in records}
     for record in records:
         platform = (record.get("rule_path") or "").replace("\\", "/").split("/")[-1].replace(".yaml", "").replace(".yml", "")
         historical_quality = _quality_trust_score(platform, conn)
@@ -135,6 +138,23 @@ def sync_sources_from_rules() -> list[dict]:
                 record["language"], record["tags"], record["enabled"],
                 record["lifecycle_status"], record["rule_path"],
             ),
+        )
+    if current_rule_paths:
+        placeholders = ",".join("?" for _ in current_rule_paths)
+        cur.execute(
+            f"""
+            DELETE FROM sources
+            WHERE replace(rule_path, '\\', '/') LIKE 'rules/%'
+              AND replace(rule_path, '\\', '/') NOT IN ({placeholders})
+            """,
+            tuple(sorted(current_rule_paths)),
+        )
+    else:
+        cur.execute(
+            """
+            DELETE FROM sources
+            WHERE replace(rule_path, '\\', '/') LIKE 'rules/%'
+            """
         )
     conn.commit()
     conn.close()

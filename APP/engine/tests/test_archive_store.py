@@ -70,24 +70,15 @@ def test_archive_store_rejects_empty_dsn():
         ArchiveStore(dsn="")
 
 
-def test_archive_store_from_env_reads_archive_pg_dsn(monkeypatch):
-    """应优先从环境变量读取 PostgreSQL 连接串。"""
+def test_archive_store_from_rule_reads_project_config(monkeypatch):
+    """归档存储只从项目配置读取 PostgreSQL DSN。"""
     from engine.archive_store import ArchiveStore
 
-    monkeypatch.setenv("ARCHIVE_PG_DSN", "postgresql://env/test")
+    monkeypatch.setattr("engine.archive_store.get_pg_dsn", lambda: "postgresql://project/test")
 
-    store = ArchiveStore.from_env()
+    store = ArchiveStore.from_rule({"archive_store": {"dsn": "postgresql://rule/ignored"}})
 
-    assert store.dsn == "postgresql://env/test"
-
-
-def test_archive_store_from_rule_falls_back_to_rule_dsn():
-    """规则中的 archive_store.dsn 应作为后备来源。"""
-    from engine.archive_store import ArchiveStore
-
-    store = ArchiveStore.from_rule({"archive_store": {"dsn": "postgresql://rule/test"}})
-
-    assert store.dsn == "postgresql://rule/test"
+    assert store.dsn == "postgresql://project/test"
 
 
 def test_build_page_payload_includes_page_fields_and_metadata():

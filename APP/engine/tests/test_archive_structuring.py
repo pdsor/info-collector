@@ -119,6 +119,21 @@ def _bind_store(monkeypatch, store):
     )
 
 
+def _bind_collection_store(monkeypatch):
+    class _CollectionStore:
+        def save_run_items(self, **kwargs):
+            return {
+                "run_id": "run-uuid-1",
+                "item_ids": [f"item-{idx}" for idx, _ in enumerate(kwargs.get("items", []), start=1)],
+                "governance_record_id": "gov-uuid-1",
+            }
+
+    monkeypatch.setattr(
+        "engine.engine.CollectionStore.from_project_config",
+        classmethod(lambda cls: _CollectionStore()),
+    )
+
+
 def _bind_save_pkg(monkeypatch, engine, tmp_path):
     monkeypatch.setattr(
         engine.output_mgr, "save_archive_package", lambda page, rule: str(tmp_path / "pkg")
@@ -176,6 +191,7 @@ def test_structuring_disabled_no_structured_records(tmp_path, monkeypatch):
         state_dir=str(tmp_path / "state"),
     )
     _stub_html(monkeypatch, engine)
+    _bind_collection_store(monkeypatch)
     _bind_save_pkg(monkeypatch, engine, tmp_path)
     _bind_ocr(monkeypatch, OCR_TABLE_TEXT)
     store = _RecordingStore()
@@ -194,6 +210,7 @@ def test_structuring_enabled_parses_ocr_table(tmp_path, monkeypatch):
         state_dir=str(tmp_path / "state"),
     )
     _stub_html(monkeypatch, engine)
+    _bind_collection_store(monkeypatch)
     _bind_save_pkg(monkeypatch, engine, tmp_path)
     _bind_ocr(monkeypatch, OCR_TABLE_TEXT)
     store = _RecordingStore()
@@ -220,6 +237,7 @@ def test_structuring_skips_no_keyword_match(tmp_path, monkeypatch):
         state_dir=str(tmp_path / "state"),
     )
     _stub_html(monkeypatch, engine)
+    _bind_collection_store(monkeypatch)
     _bind_save_pkg(monkeypatch, engine, tmp_path)
     _bind_ocr(monkeypatch, OCR_NONTABLE_TEXT)
     store = _RecordingStore()
@@ -239,6 +257,7 @@ def test_structuring_run_count_in_result(tmp_path, monkeypatch):
         state_dir=str(tmp_path / "state"),
     )
     _stub_html(monkeypatch, engine)
+    _bind_collection_store(monkeypatch)
     _bind_save_pkg(monkeypatch, engine, tmp_path)
     _bind_ocr(monkeypatch, OCR_TABLE_TEXT)
     store = _RecordingStore()

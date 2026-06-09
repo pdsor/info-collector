@@ -1,5 +1,8 @@
 """OCR 插件注册表测试。"""
 
+import json
+from pathlib import Path
+
 from engine.ocr_plugins import OcrResult, get_ocr_plugin, register_ocr_plugin, resolve_ocr_plugin_name
 
 
@@ -32,6 +35,8 @@ def test_register_and_get_custom_ocr_plugin():
         "ocr_error": "",
         "ocr_elapsed_seconds": 0.01,
         "ocr_empty": False,
+        "ocr_quality_status": "usable",
+        "ocr_quality_reasons": [],
         "manual_review_required": False,
     }
 
@@ -58,6 +63,113 @@ def test_default_tesseract_plugin_is_registered():
     plugin = get_ocr_plugin("tesseract")
 
     assert plugin.name == "tesseract"
+
+
+def test_default_paddleocr_plugin_is_registered():
+    """默认 PaddleOCR 插件应自动注册。"""
+    plugin = get_ocr_plugin("paddleocr")
+
+    assert plugin.name == "paddleocr"
+
+
+def test_paddleocr_plugin_reads_subprocess_payload(monkeypatch, tmp_path):
+    """PaddleOCR 插件应读取子进程 JSON，并优先返回 Markdown 表格。"""
+    from engine.ocr_plugins.paddleocr import PaddleOcrPlugin
+
+    image_path = tmp_path / "table.png"
+    image_path.write_bytes(b"fake-image")
+    python_path = tmp_path / "python"
+    runner_path = tmp_path / "runner.py"
+    python_path.write_text("", encoding="utf-8")
+    runner_path.write_text("", encoding="utf-8")
+
+    def fake_run(command, check, capture_output, text, timeout):
+        output_path = command[command.index("--output") + 1]
+        from subprocess import CompletedProcess
+
+        Path(output_path).write_text(
+            json.dumps(
+                {
+                    "wall_seconds": 1.23,
+                    "text": "原始文本",
+                    "table_markdown": "| 序号 | 名称 |\n| --- | --- |\n| 1 | 数码互联 |",
+                    "corrections": [{"row": "1", "source": "码互联", "target": "数码互联"}],
+                    "lines": [{"text": "数码互联"}],
+                    "image": {"width": 100, "height": 50},
+                    "config": {"lang": "ch"},
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        return CompletedProcess(command, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr("engine.ocr_plugins.paddleocr.subprocess.run", fake_run)
+
+    result = PaddleOcrPlugin().recognize(
+        str(image_path),
+        {"python": str(python_path), "runner": str(runner_path), "timeout_seconds": 5},
+    )
+
+    assert result.status == "success"
+    assert result.text.startswith("| 序号 | 名称 |")
+    assert result.structured_data["raw_text"] == "原始文本"
+    assert result.structured_data["markdown"] == result.text
+    assert result.structured_data["corrections"][0]["target"] == "数码互联"
+
+
+def test_paddleocr_short_text_requires_manual_review(monkeypatch, tmp_path):
+    """PaddleOCR 短文本应标记为低置信度并要求人工复核。"""
+    from engine.ocr_plugins.paddleocr import PaddleOcrPlugin
+
+    image_path = tmp_path / "short.png"
+    image_path.write_bytes(b"fake-image")
+    python_path = tmp_path / "python"
+    runner_path = tmp_path / "runner.py"
+    python_path.write_text("", encoding="utf-8")
+    runner_path.write_text("", encoding="utf-8")
+
+    def fake_run(command, check, capture_output, text, timeout):
+        output_path = command[command.index("--output") + 1]
+        from subprocess import CompletedProcess
+
+        Path(output_path).write_text(
+            json.dumps(
+                {
+                    "wall_seconds": 0.12,
+                    "text": "短文本",
+                    "table_markdown": "",
+                    "corrections": [],
+                    "lines": [{"text": "短文本"}],
+                    "image": {"width": 100, "height": 50},
+                    "config": {"lang": "ch"},
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        return CompletedProcess(command, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr("engine.ocr_plugins.paddleocr.subprocess.run", fake_run)
+
+    result = PaddleOcrPlugin().recognize(
+        str(image_path),
+        {
+            "python": str(python_path),
+            "runner": str(runner_path),
+            "timeout_seconds": 5,
+            "min_text_length": 20,
+            "min_line_count": 2,
+            "large_image_pixels": 200000,
+        },
+    )
+
+    assert result.status == "success_low_confidence"
+    assert result.quality_status == "manual_review_required"
+    assert result.manual_review_required is True
+    fields = result.to_item_fields()
+    assert fields["ocr_quality_status"] == "manual_review_required"
+    assert "text_too_short" in fields["ocr_quality_reasons"]
 
 
 def test_tesseract_unavailable_returns_manual_review(monkeypatch, tmp_path):
@@ -150,3 +262,5 @@ def test_ocr_result_to_item_fields_excludes_structured_data():
 
     assert "structured_data" not in fields
     assert fields["ocr_text"] == "序号 数据集名称"
+    assert fields["ocr_quality_status"] == "usable"
+    assert fields["ocr_quality_reasons"] == []

@@ -16,7 +16,12 @@ import json
 import os
 import threading
 import time as time_mod
+from datetime import date, datetime
+from decimal import Decimal
 from flask import Blueprint, jsonify, Response, stream_with_context
+from sqlalchemy import create_engine, text
+
+from APP.engine.engine.config import get_pg_dsn
 
 tasks_bp = Blueprint("tasks", __name__)
 
@@ -80,6 +85,23 @@ def update_task(task_id: int, status: str, message: str = "", new_count: int = 0
 def to_ng_status(status: str) -> str:
     """映射为 NG v2.2 任务状态。"""
     return STATUS_TO_NG.get((status or "").lower(), "PENDING")
+
+
+def _json_safe(value):
+    """把数据库返回值转换为 Flask JSON 可稳定序列化的结构。"""
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, dict):
+        return {key: _json_safe(inner) for key, inner in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(inner) for inner in value]
+    return value
+
+
+def _row_to_json(row) -> dict:
+    return {key: _json_safe(value) for key, value in dict(row).items()}
 
 
 def parse_event_line(line: str):
@@ -372,19 +394,194 @@ def task_history():
     return jsonify({"tasks": tasks})
 
 
-@tasks_bp.route("/<int:task_id>", methods=["GET"])
-def get_task(task_id):
-    """GET /api/tasks/<id> — 查询单个任务"""
+def _get_task_record(task_id: int) -> dict | None:
     conn = get_db()
     cur = conn.cursor()
     cur.execute("SELECT * FROM task_history WHERE id = ?", (task_id,))
     row = cur.fetchone()
     conn.close()
     if not row:
-        return jsonify({"error": "Task not found"}), 404
+        return None
     item = dict(row)
     item["ng_status"] = to_ng_status(item.get("status"))
+    return item
+
+
+@tasks_bp.route("/<int:task_id>", methods=["GET"])
+def get_task(task_id):
+    """GET /api/tasks/<id> — 查询单个任务"""
+    item = _get_task_record(task_id)
+    if not item:
+        return jsonify({"error": "Task not found"}), 404
+    item["collection_run"] = _find_collection_run_for_task(item)
     return jsonify(item)
+
+
+def _find_collection_run_for_task(task: dict) -> dict | None:
+    """按任务时间和规则路径定位 PostgreSQL 中的采集运行记录。"""
+    created_at = task.get("created_at")
+    if not created_at:
+        return None
+    try:
+        engine = create_engine(get_pg_dsn(), pool_pre_ping=True, connect_args={"connect_timeout": 5})
+        with engine.connect() as conn:
+            params = {"created_at": created_at}
+            rule_clause = ""
+            if task.get("rule_path"):
+                rule_clause = "and rule_path like :rule_path"
+                params["rule_path"] = f"%{task['rule_path']}"
+            row = conn.execute(text(f"""
+                select id::text, rule_name, rule_path, subject, platform, status,
+                       total_collected, saved_count, dedup_filtered, output_path,
+                       started_at, finished_at, duration_seconds
+                from collection_runs
+                where started_at >= ((cast(:created_at as timestamp) at time zone 'Asia/Shanghai') - interval '5 minutes')
+                  and started_at <= ((cast(:created_at as timestamp) at time zone 'Asia/Shanghai') + interval '5 minutes')
+                  {rule_clause}
+                order by started_at desc
+                limit 1
+            """), params).mappings().first()
+            return _row_to_json(row) if row else None
+    except Exception:
+        return None
+
+
+def _load_archive_summaries(conn, urls: list[str]) -> dict[str, dict]:
+    """按 URL 批量读取最新归档正文摘要。"""
+    urls = [url for url in urls if url]
+    if not urls:
+        return {}
+    page_rows = conn.execute(text("""
+        select distinct on (source_url)
+               id::text, source_url, title, content_hash, contains_ocr, fetched_at
+        from archive_pages
+        where source_url = any(:urls)
+        order by source_url, fetched_at desc
+    """), {"urls": urls}).mappings().all()
+    if not page_rows:
+        return {}
+
+    page_by_id = {_row_to_json(row)["id"]: _row_to_json(row) for row in page_rows}
+    block_rows = conn.execute(text("""
+        select page_id::text, block_order, block_type, text
+        from archive_blocks
+        where page_id::text = any(:page_ids)
+        order by page_id, block_order
+    """), {"page_ids": list(page_by_id.keys())}).mappings().all()
+    ocr_rows = conn.execute(text("""
+        select page_id::text, status, ocr_text, elapsed_seconds, manual_review_required
+        from ocr_results
+        where page_id::text = any(:page_ids)
+        order by page_id, created_at
+    """), {"page_ids": list(page_by_id.keys())}).mappings().all()
+
+    blocks_by_page = {page_id: [] for page_id in page_by_id}
+    for row in block_rows:
+        block = _row_to_json(row)
+        page_id = block.pop("page_id")
+        if block.get("text"):
+            blocks_by_page.setdefault(page_id, []).append(block)
+
+    ocr_by_page = {page_id: [] for page_id in page_by_id}
+    for row in ocr_rows:
+        ocr = _row_to_json(row)
+        page_id = ocr.pop("page_id")
+        if ocr.get("ocr_text"):
+            ocr_by_page.setdefault(page_id, []).append(ocr)
+
+    archive_by_url = {}
+    for page in page_by_id.values():
+        page_id = page["id"]
+        blocks = blocks_by_page.get(page_id, [])
+        ocr_results = ocr_by_page.get(page_id, [])
+        body_text = "\n\n".join(
+            block["text"] for block in blocks if block.get("block_type") in ("paragraph", "heading") and block.get("text")
+        )
+        ocr_text = "\n\n".join(ocr["ocr_text"] for ocr in ocr_results if ocr.get("ocr_text"))
+        archive_by_url[page["source_url"]] = {
+            "page_id": page_id,
+            "title": page.get("title"),
+            "content_hash": page.get("content_hash"),
+            "contains_ocr": page.get("contains_ocr"),
+            "fetched_at": page.get("fetched_at"),
+            "body_text": body_text,
+            "ocr_text": ocr_text,
+            "blocks": blocks,
+            "ocr_results": ocr_results,
+        }
+    return archive_by_url
+
+
+@tasks_bp.route("/<int:task_id>/items", methods=["GET"])
+def get_task_items(task_id):
+    """GET /api/tasks/<id>/items — 查询本次运行 raw/deduped/filtered 明细。"""
+    task = _get_task_record(task_id)
+    if not task:
+        return jsonify({"error": "Task not found"}), 404
+    task["collection_run"] = _find_collection_run_for_task(task)
+    run = task.get("collection_run")
+    if not run:
+        return jsonify({"run": None, "items": {"raw": [], "deduped": [], "filtered": []}})
+    try:
+        engine = create_engine(get_pg_dsn(), pool_pre_ping=True, connect_args={"connect_timeout": 5})
+        with engine.connect() as conn:
+            rows = conn.execute(text("""
+                select
+                    ri.item_stage,
+                    ri.raw_id,
+                    ri.url,
+                    ri.title,
+                    ri.content_hash,
+                    ri.filter_reason,
+                    ri.matched_existing_id,
+                    ri.data,
+                    ri.governance,
+                    ri.collected_at,
+                    old.id::text as old_item_id,
+                    old.title as old_title,
+                    old.url as old_url,
+                    old.content_hash as old_content_hash,
+                    old.collected_at as old_collected_at
+                from collection_run_items ri
+                left join lateral (
+                    select id, title, url, content_hash, collected_at
+                    from collection_items ci
+                    where ci.platform = ri.platform
+                      and ci.raw_id = ri.raw_id
+                      and ci.id::text <> coalesce(ri.matched_existing_id, '')
+                    order by ci.collected_at desc
+                    limit 1
+                ) old on ri.item_stage = 'filtered'
+                where ri.run_id = :run_id
+                order by ri.item_stage, ri.title nulls last, ri.raw_id nulls last
+            """), {"run_id": run["id"]}).mappings().all()
+            archive_by_url = _load_archive_summaries(
+                conn,
+                sorted({row["url"] for row in rows if row["url"]}),
+            )
+        grouped = {"raw": [], "deduped": [], "filtered": []}
+        for row in rows:
+            item = _row_to_json(row)
+            stage = item.pop("item_stage")
+            old_item_id = item.pop("old_item_id", None)
+            old_title = item.pop("old_title", None)
+            old_url = item.pop("old_url", None)
+            old_content_hash = item.pop("old_content_hash", None)
+            old_collected_at = item.pop("old_collected_at", None)
+            if old_item_id:
+                item["matched_existing_item"] = {
+                    "id": old_item_id,
+                    "title": old_title,
+                    "url": old_url,
+                    "content_hash": old_content_hash,
+                    "collected_at": old_collected_at,
+                }
+            if item.get("url") in archive_by_url:
+                item["archive"] = archive_by_url[item["url"]]
+            grouped.setdefault(stage, []).append(item)
+        return jsonify({"run": run, "items": grouped})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
 
 
 @tasks_bp.route("/<int:task_id>/logs", methods=["GET"])

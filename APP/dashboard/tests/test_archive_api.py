@@ -55,6 +55,7 @@ def test_list_archives_empty(monkeypatch, tmp_path):
 def test_list_archives_returns_summaries(monkeypatch, tmp_path):
     _write_package(tmp_path)
     monkeypatch.setattr("APP.dashboard.apis.archive_api.OUTPUT_DIR", str(tmp_path))
+    monkeypatch.setattr("APP.dashboard.apis.archive_api.is_current_scope", lambda subject, platform: True)
     client = app.test_client()
     resp = client.get("/api/archives")
     assert resp.status_code == 200
@@ -78,6 +79,7 @@ def test_get_archive_not_found(monkeypatch, tmp_path):
 def test_get_archive_returns_blocks(monkeypatch, tmp_path):
     _write_package(tmp_path)
     monkeypatch.setattr("APP.dashboard.apis.archive_api.OUTPUT_DIR", str(tmp_path))
+    monkeypatch.setattr("APP.dashboard.apis.archive_api.is_current_scope", lambda subject, platform: True)
     client = app.test_client()
     resp = client.get("/api/archives/abc123")
     assert resp.status_code == 200
@@ -93,9 +95,22 @@ def test_get_archive_loads_structured_records_sidecar(monkeypatch, tmp_path):
     sr = [{"record_type": "dataset_row", "data": {"序号": "1", "名称": "数据集A"}, "raw_columns": ["1", "数据集A"]}]
     (pkg_dir / "structured_records.json").write_text(json.dumps(sr, ensure_ascii=False), encoding="utf-8")
     monkeypatch.setattr("APP.dashboard.apis.archive_api.OUTPUT_DIR", str(tmp_path))
+    monkeypatch.setattr("APP.dashboard.apis.archive_api.is_current_scope", lambda subject, platform: True)
     client = app.test_client()
     resp = client.get("/api/archives/abc123")
     assert resp.status_code == 200
     data = resp.get_json()
     assert len(data["structured_records"]) == 1
     assert data["structured_records"][0]["data"]["名称"] == "数据集A"
+
+
+def test_list_archives_filters_non_current_rule_scope(monkeypatch, tmp_path):
+    _write_package(tmp_path)
+    monkeypatch.setattr("APP.dashboard.apis.archive_api.OUTPUT_DIR", str(tmp_path))
+    monkeypatch.setattr("APP.dashboard.apis.archive_api.is_current_scope", lambda subject, platform: False)
+    client = app.test_client()
+    resp = client.get("/api/archives")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["pages"] == []
+    assert data["total"] == 0

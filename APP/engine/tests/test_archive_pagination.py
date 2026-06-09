@@ -116,6 +116,21 @@ def _bind_store(monkeypatch, store):
     )
 
 
+def _bind_collection_store(monkeypatch):
+    class _CollectionStore:
+        def save_run_items(self, **kwargs):
+            return {
+                "run_id": "run-uuid-1",
+                "item_ids": [f"item-{idx}" for idx, _ in enumerate(kwargs.get("items", []), start=1)],
+                "governance_record_id": "gov-uuid-1",
+            }
+
+    monkeypatch.setattr(
+        "engine.engine.CollectionStore.from_project_config",
+        classmethod(lambda cls: _CollectionStore()),
+    )
+
+
 def _bind_save_pkg(monkeypatch, engine, tmp_path):
     monkeypatch.setattr(
         engine.output_mgr, "save_archive_package", lambda page, rule: str(tmp_path / "pkg")
@@ -140,6 +155,7 @@ def test_no_pagination_config_fetches_one_page(tmp_path, monkeypatch):
         state_dir=str(tmp_path / "state"),
     )
     _stub_html(monkeypatch, engine, {"/list.shtml": LIST_PAGE_1})
+    _bind_collection_store(monkeypatch)
     _bind_save_pkg(monkeypatch, engine, tmp_path)
     store = _RecordingStore()
     _bind_store(monkeypatch, store)
@@ -163,6 +179,7 @@ def test_pagination_fetches_second_page(tmp_path, monkeypatch):
         "page=2": LIST_PAGE_2,
         "/list.shtml": LIST_PAGE_1,
     })
+    _bind_collection_store(monkeypatch)
     _bind_save_pkg(monkeypatch, engine, tmp_path)
     store = _RecordingStore()
     _bind_store(monkeypatch, store)
@@ -188,6 +205,7 @@ def test_pagination_respects_max_pages(tmp_path, monkeypatch):
         "page=3": LIST_PAGE_3_ONLY,
         "/list.shtml": LIST_PAGE_1,
     })
+    _bind_collection_store(monkeypatch)
     _bind_save_pkg(monkeypatch, engine, tmp_path)
     store = _RecordingStore()
     _bind_store(monkeypatch, store)
@@ -211,6 +229,7 @@ def test_pagination_stops_when_no_next_link(tmp_path, monkeypatch):
         "page=2": LIST_PAGE_2,
         "/list.shtml": LIST_PAGE_1,
     })
+    _bind_collection_store(monkeypatch)
     _bind_save_pkg(monkeypatch, engine, tmp_path)
     store = _RecordingStore()
     _bind_store(monkeypatch, store)

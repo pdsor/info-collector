@@ -38,6 +38,13 @@ if os.path.realpath(sys.executable) != os.path.realpath(_VENV_PATH) and os.path.
 import json
 import click
 
+# 自动加载 .env（不覆盖已有环境变量）
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(__file__), ".env"), override=False)
+except ImportError:
+    pass
+
 # Add engine package to path
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -86,6 +93,18 @@ def _resolve_rule_path(rule_path: str) -> str:
     """Resolve relative rule path to absolute path under engine/rules/."""
     # rule_path is relative to APP/engine/, e.g. "rules/数据要素/tmtpost.yaml"
     return os.path.join(os.path.dirname(__file__), rule_path)
+
+
+def _relative_rule_path(rule_path: str) -> str:
+    """将规则路径统一为相对 APP/engine 的 POSIX 风格路径。"""
+    if not rule_path:
+        return ""
+    if os.path.isabs(rule_path):
+        try:
+            rule_path = os.path.relpath(rule_path, os.path.dirname(__file__))
+        except ValueError:
+            pass
+    return rule_path.replace("\\", "/")
 
 
 def _print_state(state_mgr):
@@ -240,20 +259,36 @@ def cmd_scan():
 @cli.command("list-rules")
 @click.option("--format", "fmt", default="text")
 def list_rules_cmd(fmt):
-    """列出所有已注册规则（从 state.json 读取）"""
+    """列出当前真实存在的 YAML 规则。"""
     from engine.state import StateManager
+    import yaml
     state_mgr = StateManager(STATE_DIR)
     state = state_mgr._state
+    state_rules = state.get("rules", {})
     rules = []
-    for name, info in state.get("rules", {}).items():
+    for path in _all_rule_files(RULES_DIR):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                rule = yaml.safe_load(f) or {}
+        except Exception:
+            continue
+        if not isinstance(rule, dict):
+            continue
+        rel_path = _relative_rule_path(path)
+        name = rule.get("name") or os.path.basename(path)
+        source = rule.get("source") or {}
+        state_info = state_rules.get(name, {})
         rules.append({
-            "name": info.get("name", name),
-            "platform": info.get("platform", ""),
-            "subject": info.get("subject", ""),
-            "path": info.get("rule_path") or info.get("path") or "",
-            "enabled": info.get("enabled", True),
-            "last_run": info.get("last_run"),
-            "last_status": info.get("last_status"),
+            "name": name,
+            "platform": source.get("platform", ""),
+            "subject": rule.get("subject") or source.get("subject", ""),
+            "path": rel_path,
+            "enabled": bool(rule.get("enabled", True) and source.get("enabled", True)),
+            "version": rule.get("version", ""),
+            "rule_id": rule.get("rule_id", ""),
+            "source_id": rule.get("source_id") or source.get("id", ""),
+            "last_run": state_info.get("last_run_at"),
+            "last_status": state_info.get("last_run_status"),
         })
     if fmt == "json":
         click.echo(json.dumps({"rules": rules}, ensure_ascii=False))

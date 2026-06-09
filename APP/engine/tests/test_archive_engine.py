@@ -37,6 +37,26 @@ def _write_rule(tmp_path: Path, archive_block):
 def _stub_pipeline(monkeypatch, engine, items):
     monkeypatch.setattr(engine, "crawl", lambda rule: list(items))
     monkeypatch.setattr(engine, "save_output", lambda *args, **kwargs: "")
+    monkeypatch.setattr(
+        engine.html_crawler,
+        "fetch",
+        lambda *args, **kwargs: (
+            "<html><body><h1>归档样例</h1><div><p>正文段落</p></div></body></html>"
+        ),
+    )
+
+    class _CollectionStore:
+        def save_run_items(self, **kwargs):
+            return {
+                "run_id": "run-uuid-1",
+                "item_ids": [f"item-{idx}" for idx, _ in enumerate(kwargs.get("items", []), start=1)],
+                "governance_record_id": "gov-uuid-1",
+            }
+
+    monkeypatch.setattr(
+        "engine.engine.CollectionStore.from_project_config",
+        classmethod(lambda cls: _CollectionStore()),
+    )
 
 
 def test_archive_not_enabled_does_not_trigger_archive(tmp_path, monkeypatch):

@@ -151,10 +151,12 @@ class OutputManager:
         combined_path = os.path.join(subject_dir, "combined_latest.json")
         os.makedirs(subject_dir, exist_ok=True)
 
-        # Scan all platform sub-dirs under this subject for data JSON files
+        # 扫描主题下的平台数据 JSON；归档包里的 page/blocks/manifest 不是列表采集数据。
         all_files = []
         if os.path.isdir(subject_dir):
             for root, dirs, files in os.walk(subject_dir):
+                if "archives" in Path(root).parts:
+                    continue
                 for fname in files:
                     if (fname.startswith(".")
                         or fname == "combined_latest.json"
@@ -174,7 +176,13 @@ class OutputManager:
             try:
                 with open(fpath, encoding='utf-8') as f:
                     data = json.load(f)
+                if not isinstance(data, dict):
+                    continue
+                if not isinstance(data.get("data"), list):
+                    continue
                 for item in data.get("data", []):
+                    if not isinstance(item, dict):
+                        continue
                     url = item.get("url", "")
                     if url and url not in seen_urls:
                         seen_urls.add(url)

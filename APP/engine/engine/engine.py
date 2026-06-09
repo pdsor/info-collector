@@ -1,9 +1,11 @@
 """Info Collector Engine - Main Engine Class"""
+import mimetypes
 import os
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urljoin, urlparse
 import base64
+import time
 from hashlib import sha256
 import parsel
 from .rule_parser import RuleParser
@@ -50,9 +52,19 @@ from .image_extraction import ImageExtractionRunner
 from .state import StateManager
 from .parsers import UA
 from .archive import build_archive_page
+from .archive import _build_content_hash
 from .archive_store import ArchiveStore
+from .collection_store import CollectionStore
 from .ocr_plugins import get_ocr_plugin
 from .structuring import run_structuring
+
+
+def _resolve_max_details(value) -> int | None:
+    """解析详情页数量上限；空值、0、all 表示不限制。"""
+    if value in (None, "", 0, "0", "all", "ALL", "unlimited", "Unlimited"):
+        return None
+    limit = int(value)
+    return limit if limit > 0 else None
 
 
 def _download_image_for_archive(url: str, image_ocr_cfg: dict) -> str:
@@ -82,6 +94,7 @@ class InfoCollectorEngine:
         self.browser_crawler = BrowserCrawler(client="playwright")
         self.last_ocr_summary = {}
         self._last_list_html = ""
+        self._last_list_htmls: list[str] = []
 
     def close(self):
         """Close all engine resources to prevent leaks"""
@@ -101,8 +114,8 @@ class InfoCollectorEngine:
         source_type = rule.get("source", {}).get("type", "html")
         client_mode = rule.get("source", {}).get("client", "desktop")
 
-        # client: browser forces browser crawler regardless of source type
-        if client_mode == "browser":
+        # client: browser/cloakbrowser 强制走浏览器渲染，无视 source.type
+        if client_mode in {"browser", "cloakbrowser", "cloak", "playwright"}:
             return self._crawl_browser(rule)
 
         if source_type == "api":
@@ -130,92 +143,37 @@ class InfoCollectorEngine:
         """Crawl HTML source with client UA strategy support."""
         source = rule.get("source", {})
         url = source.get("url", "")
-        request_headers = rule.get("request", {}).get("headers", {})
-        client_mode = source.get("client", "desktop")  # auto, mobile, desktop, browser
+        pagination_cfg = (rule.get("list") or {}).get("pagination") or {}
+        if pagination_cfg.get("type") == "url_template":
+            return self._crawl_html_url_template(rule, url, pagination_cfg)
 
-        # Determine User-Agent based on client strategy
-        user_agent = request_headers.get("User-Agent")  # YAML override takes precedence
-        if not user_agent:
-            if client_mode == "mobile":
-                user_agent = UA.MOBILE
-            elif client_mode == "desktop":
-                user_agent = UA.DESKTOP
-            # browser mode: HTMLCrawler handles its own UA (random from USER_AGENTS list)
-            # auto mode: start with desktop, fallback below if needed
-
-        # Build kwargs for fetch
-        fetch_kwargs = {}
-        if user_agent:
-            fetch_kwargs["headers"] = {**request_headers, "User-Agent": user_agent}
-        elif request_headers:
-            fetch_kwargs["headers"] = request_headers
-
-        # Fetch HTML — auto mode: try desktop first, fallback to mobile if too small
-        MIN_RESPONSE_SIZE = 5000
-        if client_mode == "auto":
-            # Try desktop first
-            desktop_kwargs = {**fetch_kwargs, "headers": {**(fetch_kwargs.get("headers", {})), "User-Agent": UA.DESKTOP}}
-            html_content = self.html_crawler.fetch(url, **desktop_kwargs)
-            if len(html_content) < MIN_RESPONSE_SIZE:
-                # Fallback to mobile
-                mobile_kwargs = {**fetch_kwargs, "headers": {**(fetch_kwargs.get("headers", {})), "User-Agent": UA.MOBILE}}
-                html_content = self.html_crawler.fetch(url, **mobile_kwargs)
-        else:
-            html_content = self.html_crawler.fetch(url, **fetch_kwargs)
-
+        html_content = self._fetch_one_html_page(rule, url)
         self._last_list_html = html_content
+        self._last_list_htmls = [html_content] if html_content else []
 
-        # Parse items
-        items_path = rule.get("list", {}).get("items_path", "")
+        items_path = (rule.get("list") or {}).get("items_path", "")
         elements = self.html_crawler.parse_items(html_content, items_path)
-        
-        # Extract fields
+
         if "extract" in rule:
             items = self._extract_rule_v2_items(elements, rule)
-            return self._append_image_extraction_items(html_content, items, rule, url)
+        else:
+            items = self._parse_legacy_items(elements, rule)
 
-        field_defs = rule.get("list", {}).get("fields", [])
-        items = []
-        
-        for element in elements:
-            item = {}
-            for field_def in field_defs:
-                field_name = field_def["name"]
-                field_type = field_def["type"]
-
-                if field_type == "constant":
-                    item[field_name] = field_def["value"]
-                elif field_type == "attr":
-                    item[field_name] = element.get(field_def.get("attr", "href"), "")
-                elif field_type == "computed":
-                    item[field_name] = field_def.get("value")
-                elif field_type == "element_text":
-                    item[field_name] = element.get("title", "") or element.get("text", "")
-                elif field_type == "element_href":
-                    href = element.get("href", "")
-                    transform = field_def.get("transform")
-                    if transform:
-                        href = _transform_url(href, transform)
-                    item[field_name] = href
-                    # resolve_url requires Playwright — only valid in _crawl_browser path
-                    # In _crawl_html, keep original URL (will be resolved if rule uses browser client)
-                elif field_type == "xpath":
-                    item[field_name] = self.html_crawler.extract_text(
-                        element.get("html", ""), field_def.get("path", "")
-                    )
-
-            # Extract raw_id from URL for dedup if url_to_id_pattern is set
-            if "url_to_id_pattern" in rule.get("dedup", {}):
-                import re
-                pattern = rule["dedup"]["url_to_id_pattern"]
-                url = item.get("url", "")
-                m = re.search(pattern, url)
-                if m:
-                    item["raw_id"] = m.group(1)
-
-            items.append(item)
-
+        self._apply_dedup_raw_ids(items, rule)
         return self._append_image_extraction_items(html_content, items, rule, url)
+
+    def _apply_dedup_raw_ids(self, items: list, rule: dict) -> None:
+        """从 item.url 按 url_to_id_pattern 填充 raw_id（就地修改）。"""
+        import re as _re
+        pattern = (rule.get("dedup") or {}).get("url_to_id_pattern")
+        if not pattern:
+            return
+        for item in items:
+            if item.get("raw_id"):
+                continue
+            m = _re.search(pattern, item.get("url", ""))
+            if m:
+                item["raw_id"] = m.group(1)
 
     def _append_image_extraction_items(self, html_content: str, items: list, rule: dict, page_url: str) -> list:
         """在标准网页采集结果后按配置处理图片 OCR 记录。"""
@@ -241,9 +199,11 @@ class InfoCollectorEngine:
                 field_type = field_def.get("type", "text")
                 css = field_def.get("selector", "")
                 selected = selector.css(css) if css else selector
-                if field_type == "attribute":
-                    attr = field_def.get("attribute", "")
-                    item[field_name] = selected.attrib.get(attr, "") if selected else ""
+                if field_type in ("attribute", "attr"):
+                    attr = field_def.get("attribute") or field_def.get("attr", "")
+                    raw = selected.attrib.get(attr, "") if selected else ""
+                    base = field_def.get("base_url", "")
+                    item[field_name] = urljoin(base, raw) if base and raw else raw
                 elif field_type == "html":
                     item[field_name] = selected.get(default="") if selected else ""
                 elif field_type == "list":
@@ -256,6 +216,101 @@ class InfoCollectorEngine:
                         "".join(selected.xpath("string()").getall()).strip()
                         if selected else ""
                     )
+            items.append(item)
+        return items
+
+    def _fetch_one_html_page(self, rule: dict, url: str) -> str:
+        """按规则 UA 策略抓单页 HTML。"""
+        source = rule.get("source", {})
+        request_headers = rule.get("request", {}).get("headers", {})
+        client_mode = source.get("client", "desktop")
+        user_agent = request_headers.get("User-Agent")
+        if not user_agent:
+            if client_mode == "mobile":
+                user_agent = UA.MOBILE
+            elif client_mode == "desktop":
+                user_agent = UA.DESKTOP
+        fetch_kwargs: dict = {}
+        if user_agent:
+            fetch_kwargs["headers"] = {**request_headers, "User-Agent": user_agent}
+        elif request_headers:
+            fetch_kwargs["headers"] = request_headers
+        MIN_RESPONSE_SIZE = 5000
+        if client_mode == "auto":
+            desktop_kw = {**fetch_kwargs, "headers": {**(fetch_kwargs.get("headers", {})), "User-Agent": UA.DESKTOP}}
+            html = self.html_crawler.fetch(url, **desktop_kw)
+            if len(html) < MIN_RESPONSE_SIZE:
+                mobile_kw = {**fetch_kwargs, "headers": {**(fetch_kwargs.get("headers", {})), "User-Agent": UA.MOBILE}}
+                html = self.html_crawler.fetch(url, **mobile_kw)
+            return html
+        return self.html_crawler.fetch(url, **fetch_kwargs)
+
+    def _crawl_html_url_template(self, rule: dict, base_url: str, pagination_cfg: dict) -> list:
+        """URL 模板翻页：循环替换 {page} 直至无结果或达到 max_pages。"""
+        url_template = pagination_cfg.get("url_template") or base_url
+        start_page = int(pagination_cfg.get("start_page") or 1)
+        max_pages = int(pagination_cfg.get("max_pages") or 10)
+        items_path = (rule.get("list") or {}).get("items_path", "")
+        all_items: list = []
+        first_html = ""
+        page_htmls: list[str] = []
+        for page_num in range(start_page, start_page + max_pages):
+            page_url = url_template.replace("{page}", str(page_num))
+            try:
+                html = self._fetch_one_html_page(rule, page_url)
+            except Exception:
+                break
+            if not first_html:
+                first_html = html
+                self._last_list_html = html
+            page_htmls.append(html)
+            elements = self.html_crawler.parse_items(html, items_path)
+            if not elements:
+                break
+            if "extract" in rule:
+                page_items = self._extract_rule_v2_items(elements, rule)
+            else:
+                page_items = self._parse_legacy_items(elements, rule)
+            if not page_items:
+                break
+            all_items.extend(page_items)
+        self._last_list_htmls = page_htmls
+        self._apply_dedup_raw_ids(all_items, rule)
+        return self._append_image_extraction_items(first_html, all_items, rule, base_url)
+
+    def _parse_legacy_items(self, elements: list, rule: dict) -> list:
+        """旧版 list.fields 提取逻辑（不含图片提取）。"""
+        import re as _re
+        field_defs = (rule.get("list") or {}).get("fields", [])
+        items = []
+        for element in elements:
+            item = {}
+            for field_def in field_defs:
+                field_name = field_def["name"]
+                field_type = field_def["type"]
+                if field_type == "constant":
+                    item[field_name] = field_def["value"]
+                elif field_type == "attr":
+                    item[field_name] = element.get(field_def.get("attr", "href"), "")
+                elif field_type == "computed":
+                    item[field_name] = field_def.get("value")
+                elif field_type == "element_text":
+                    item[field_name] = element.get("title", "") or element.get("text", "")
+                elif field_type == "element_href":
+                    href = element.get("href", "")
+                    transform = field_def.get("transform")
+                    if transform:
+                        href = _transform_url(href, transform)
+                    item[field_name] = href
+                elif field_type == "xpath":
+                    item[field_name] = self.html_crawler.extract_text(
+                        element.get("html", ""), field_def.get("path", "")
+                    )
+            if "url_to_id_pattern" in rule.get("dedup", {}):
+                pattern = rule["dedup"]["url_to_id_pattern"]
+                m = _re.search(pattern, item.get("url", ""))
+                if m:
+                    item["raw_id"] = m.group(1)
             items.append(item)
         return items
 
@@ -292,6 +347,7 @@ class InfoCollectorEngine:
         # Extract fields
         if "extract" in rule:
             items = self._extract_rule_v2_items(elements, rule)
+            self._apply_dedup_raw_ids(items, rule)
             return self._append_image_extraction_items(html_content, items, rule, url)
 
         field_defs = rule.get("list", {}).get("fields", [])
@@ -367,6 +423,34 @@ class InfoCollectorEngine:
         
         filtered_count = total_count - len(filtered_items)
         return filtered_items, filtered_count
+
+    def deduplicate_detailed(self, items: list, rule: dict) -> tuple[list, int, list]:
+        """增量去重并返回保留项、过滤数量和过滤明细。"""
+        if not rule.get("dedup", {}).get("incremental", False):
+            return items, 0, []
+
+        requirement = rule.get("name", "default")
+        platform = rule.get("source", {}).get("platform", "unknown")
+        kept_items = []
+        filtered_items = []
+
+        for item in items:
+            raw_id = item.get("raw_id", "")
+            dedup_id = f"{platform}_{raw_id}"
+            if self.dedup.check(requirement, platform, raw_id):
+                filtered = dict(item)
+                filtered["_filter_reason"] = "dedup_incremental_existing_raw_id"
+                filtered["_matched_existing_id"] = dedup_id
+                filtered_items.append(filtered)
+                continue
+            kept_items.append(item)
+
+        for item in kept_items:
+            raw_id = item.get("raw_id", "")
+            url = item.get("url", "")
+            self.dedup.add(requirement, platform, raw_id, url)
+
+        return kept_items, len(filtered_items), filtered_items
     
     def save_output(self, items: list, rule: dict, dedup_filtered: int = 0,
                     governance_summary: dict | None = None) -> str:
@@ -383,6 +467,9 @@ class InfoCollectorEngine:
 
     def _collect_list_htmls(self, rule: dict, initial_html: str) -> list[str]:
         """返回初始页及按 next-page 链接抓取的后续页 HTML 列表。"""
+        list_pagination = (rule.get("list") or {}).get("pagination") or {}
+        if list_pagination.get("type") == "url_template" and self._last_list_htmls:
+            return self._last_list_htmls
         discovery_cfg = rule.get("discovery") or {}
         pagination = discovery_cfg.get("pagination") or {}
         if not pagination.get("enabled"):
@@ -422,13 +509,16 @@ class InfoCollectorEngine:
         title_def = list_cfg.get("title") or {}
         detail_def = list_cfg.get("detail_url") or {}
         keywords = (cfg.get("filters") or {}).get("title_keywords") or []
-        max_details = int(cfg.get("max_details") or 1)
+        max_details = _resolve_max_details(cfg.get("max_details"))
 
         selector = parsel.Selector(text=list_html)
-        css = items_path.removeprefix("css:") if items_path.startswith("css:") else items_path
+        if items_path.startswith("xpath:"):
+            items_iter = selector.xpath(items_path[6:])
+        else:
+            items_iter = selector.css(items_path.removeprefix("css:") if items_path.startswith("css:") else items_path)
         candidates: list[dict] = []
         seen_urls: set[str] = set()
-        for item in selector.css(css):
+        for item in items_iter:
             title_selector = title_def.get("selector", "")
             if title_selector:
                 title = "".join(item.css(title_selector).xpath("string()").getall()).strip()
@@ -451,7 +541,7 @@ class InfoCollectorEngine:
                 continue
             seen_urls.add(absolute)
             candidates.append({"title": title, "detail_url": absolute})
-            if len(candidates) >= max_details:
+            if max_details is not None and len(candidates) >= max_details:
                 break
         return candidates
 
@@ -461,7 +551,7 @@ class InfoCollectorEngine:
 
     def _fetch_detail_html(self, rule: dict, detail_url: str) -> str:
         client = (rule.get("source") or {}).get("client", "desktop")
-        if client == "browser":
+        if client in {"browser", "cloakbrowser", "cloak", "playwright"}:
             return self.browser_crawler.fetch(detail_url, rule.get("render", {}) or {})
         return self.html_crawler.fetch(detail_url)
 
@@ -477,7 +567,12 @@ class InfoCollectorEngine:
         blocks: list[dict] = []
         if title:
             blocks.append({"block_id": "b1", "type": "heading", "order": 1, "text": title, "level": 1})
-        for index, para in enumerate(selector.css(f"{content_selector} p"), start=2):
+
+        # 优先提取 <p>，若为空则回退到直接子 <div>（部分政府网站正文用 div 而非 p）
+        paras = selector.css(f"{content_selector} p")
+        if not paras:
+            paras = selector.css(f"{content_selector} > div")
+        for index, para in enumerate(paras, start=2):
             text = "".join(para.xpath("string()").getall()).strip()
             if text:
                 blocks.append({"block_id": f"b{index}", "type": "paragraph", "order": index, "text": text})
@@ -489,6 +584,7 @@ class InfoCollectorEngine:
         detail_html: str,
         detail_url: str,
         next_index: int,
+        progress=None,
     ) -> tuple[list[dict], list[dict]]:
         cfg = (rule.get("archive") or {}).get("image_ocr") or {}
         if not cfg.get("enabled"):
@@ -503,25 +599,51 @@ class InfoCollectorEngine:
         selector = parsel.Selector(text=detail_html or "")
         blocks: list[dict] = []
         assets: list[dict] = []
+        image_nodes = selector.css(selector_text)[:max_images]
+        image_total = len(image_nodes)
 
-        for node in selector.css(selector_text)[:max_images]:
+        for image_index, node in enumerate(image_nodes, start=1):
             src = node.attrib.get(src_attr, "").strip()
             if not src:
                 continue
             absolute = urljoin(detail_url, src)
+            if progress:
+                progress(f"OCR 图片 {image_index}/{image_total} 开始下载: {absolute}")
             try:
                 local_path = _download_image_for_archive(absolute, cfg)
-            except Exception:
+            except Exception as exc:
+                if progress:
+                    progress(f"OCR 图片 {image_index}/{image_total} 下载失败: {exc}")
                 continue
             image_block_id = f"b{next_index}"
             ocr_block_id = f"b{next_index + 1}"
             try:
+                if progress:
+                    size_bytes = os.path.getsize(local_path) if os.path.exists(local_path) else 0
+                    progress(f"OCR 图片 {image_index}/{image_total} 开始识别: {local_path} ({size_bytes} bytes)")
+                ocr_started = time.time()
                 ocr_result = get_ocr_plugin(plugin_name).recognize(local_path, ocr_cfg)
                 ocr_text = ocr_result.text or ""
                 manual = ocr_result.manual_review_required
-            except Exception:
+                ocr_structured_data = ocr_result.structured_data or {}
+                ocr_status = ocr_result.status
+                ocr_error = ocr_result.error
+                ocr_elapsed_seconds = ocr_result.elapsed_seconds
+                if progress:
+                    progress(
+                        f"OCR 图片 {image_index}/{image_total} 识别完成: "
+                        f"status={ocr_result.status}, 耗时 {time.time() - ocr_started:.2f}s, "
+                        f"文本 {len(ocr_text)} 字"
+                    )
+            except Exception as exc:
                 ocr_text = ""
                 manual = True
+                ocr_structured_data = {}
+                ocr_status = "unavailable"
+                ocr_error = str(exc)
+                ocr_elapsed_seconds = 0
+                if progress:
+                    progress(f"OCR 图片 {image_index}/{image_total} 识别异常: {exc}")
 
             blocks.append({
                 "block_id": image_block_id,
@@ -536,6 +658,11 @@ class InfoCollectorEngine:
                 "order": next_index + 1,
                 "parent_block_id": image_block_id,
                 "ocr_text": ocr_text,
+                "engine": plugin_name,
+                "status": ocr_status,
+                "structured_data": ocr_structured_data,
+                "elapsed_seconds": ocr_elapsed_seconds,
+                "error": ocr_error,
                 "manual_review_required": manual,
             })
             assets.append({
@@ -544,20 +671,36 @@ class InfoCollectorEngine:
                 "asset_type": "image",
                 "source_url": absolute,
                 "storage_uri": local_path,
+                "file_name": os.path.basename(local_path),
+                "extension": Path(local_path).suffix.lstrip("."),
+                "mime_type": mimetypes.guess_type(local_path)[0],
+                "size_bytes": os.path.getsize(local_path) if os.path.exists(local_path) else 0,
+                "content_hash": self._file_sha256(local_path),
+                "downloaded": True,
             })
             next_index += 2
         return blocks, assets
 
-    def _archive_after_pipeline(self, rule: dict, items: list) -> dict:
+    def _file_sha256(self, path: str) -> str:
+        """计算本地文件哈希，用于归档资产去重和审计。"""
+        digest = sha256()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def _archive_after_pipeline(self, rule: dict, items: list, progress=None) -> dict:
         archive_cfg = rule.get("archive") or {}
         if not archive_cfg.get("enabled"):
             return {}
         discovery_cfg = rule.get("discovery") or {}
         if discovery_cfg.get("enabled"):
+            if progress:
+                progress("归档阶段开始：发现详情页候选")
             list_htmls = self._collect_list_htmls(rule, self._last_list_html or "")
             # Aggregate candidates across pages, deduplicating URLs
             discovery_cfg_local = rule.get("discovery") or {}
-            max_details = int(discovery_cfg_local.get("max_details") or 1)
+            max_details = _resolve_max_details(discovery_cfg_local.get("max_details"))
             seen_urls: set[str] = set()
             candidates: list[dict] = []
             for html in list_htmls:
@@ -565,22 +708,62 @@ class InfoCollectorEngine:
                     if c["detail_url"] not in seen_urls:
                         seen_urls.add(c["detail_url"])
                         candidates.append(c)
-                    if len(candidates) >= max_details:
+                    if max_details is not None and len(candidates) >= max_details:
                         break
-                if len(candidates) >= max_details:
+                if max_details is not None and len(candidates) >= max_details:
                     break
             if not candidates:
+                if progress:
+                    progress("归档阶段结束：未发现详情页候选")
                 return {}
+            if progress:
+                progress(f"归档阶段：发现 {len(candidates)} 个详情页候选")
             seen_hashes: set[str] = set()
             archive_pages: list[dict] = []
-            for candidate in candidates:
+            for index, candidate in enumerate(candidates, start=1):
                 try:
+                    if progress:
+                        progress(f"归档详情 {index}/{len(candidates)} 开始抓取: {candidate['detail_url']}")
                     detail_html = self._fetch_detail_html(rule, candidate["detail_url"])
+                    if progress:
+                        progress(f"归档详情 {index}/{len(candidates)} 抓取完成: HTML {len(detail_html)} 字符")
+                    detail_hash = _build_content_hash(
+                        candidate["detail_url"],
+                        candidate["detail_url"],
+                        detail_html,
+                        "",
+                    )
+                    store = ArchiveStore.from_rule(rule)
+                    ocr_plugin_name = (((rule.get("archive") or {}).get("image_ocr") or {}).get("ocr") or {}).get("plugin") or "tesseract"
+                    hash_satisfies_ocr = getattr(store, "content_hash_satisfies_ocr_engine", None)
+                    hash_exists = getattr(store, "content_hash_exists", None)
+                    if hash_satisfies_ocr:
+                        should_skip = hash_satisfies_ocr(detail_hash, ocr_plugin_name)
+                    else:
+                        should_skip = bool(hash_exists and hash_exists(detail_hash))
+                    if should_skip:
+                        if progress:
+                            progress(
+                                f"归档详情 {index}/{len(candidates)} 已存在且满足当前 OCR 引擎，"
+                                f"跳过 OCR 和写入: content_hash={detail_hash}, ocr_engine={ocr_plugin_name}"
+                            )
+                        continue
                     title, blocks = self._extract_detail_blocks(rule, detail_html)
+                    if progress:
+                        progress(f"归档详情 {index}/{len(candidates)} 正文解析完成: {len(blocks)} 个文本块")
                     extra_blocks, assets = self._extract_detail_assets_and_ocr(
-                        rule, detail_html, candidate["detail_url"], next_index=len(blocks) + 1
+                        rule,
+                        detail_html,
+                        candidate["detail_url"],
+                        next_index=len(blocks) + 1,
+                        progress=progress,
                     )
                     blocks.extend(extra_blocks)
+                    if progress:
+                        progress(
+                            f"归档详情 {index}/{len(candidates)} OCR 处理完成: "
+                            f"新增 {len(extra_blocks)} 个块, {len(assets)} 个资产"
+                        )
                     info = self._maybe_archive_page(
                         rule,
                         items,
@@ -592,19 +775,27 @@ class InfoCollectorEngine:
                         detail_assets=assets,
                         seen_hashes=seen_hashes,
                     )
-                except Exception:
+                    if progress and info:
+                        progress(f"归档详情 {index}/{len(candidates)} 写入完成: page_id={info.get('page_id')}")
+                except Exception as exc:
+                    if progress:
+                        progress(f"归档详情 {index}/{len(candidates)} 失败: {type(exc).__name__}: {exc}")
                     continue
                 if info:
                     archive_pages.append(info)
             if not archive_pages:
+                if progress:
+                    progress("归档阶段结束：没有成功写入的详情页")
                 return {}
             head = archive_pages[0]
+            if progress:
+                progress(f"归档阶段完成：成功写入 {len(archive_pages)} 个详情页")
             return {
                 "archive_page_id": head["page_id"],
                 "archive_package_path": head["package_path"],
                 "archive_pages": archive_pages,
             }
-        info = self._maybe_archive_page(rule, items, html=None)
+        info = self._maybe_archive_single_page(rule, items, progress=progress)
         if not info:
             return {}
         return {
@@ -612,6 +803,45 @@ class InfoCollectorEngine:
             "archive_package_path": info["package_path"],
             "archive_pages": [info],
         }
+
+    def _maybe_archive_single_page(self, rule: dict, items: list, progress=None) -> dict:
+        """archive.enabled 且无 discovery 时，把 rule.source.url 作为单页详情归档。
+
+        会重新抓一次详情 HTML（与 crawl 主流程相对独立），然后走
+        _extract_detail_blocks + _extract_detail_assets_and_ocr，让归档包含完整 blocks
+        与图像 OCR 内容。失败时安静返回空字典。
+        """
+        source_url = (rule.get("source") or {}).get("url") or ""
+        if not source_url:
+            return {}
+        try:
+            detail_html = self._fetch_detail_html(rule, source_url)
+        except Exception:
+            return {}
+        if not detail_html:
+            return {}
+        try:
+            title, blocks = self._extract_detail_blocks(rule, detail_html)
+            extra_blocks, assets = self._extract_detail_assets_and_ocr(
+                rule, detail_html, source_url, next_index=len(blocks) + 1, progress=progress
+            )
+            blocks.extend(extra_blocks)
+        except Exception:
+            return {}
+        if not title and items and isinstance(items[0], dict):
+            title = items[0].get("title") or ""
+        info = self._maybe_archive_page(
+            rule,
+            items,
+            html=None,
+            detail_url=source_url,
+            detail_html=detail_html,
+            detail_title=title,
+            detail_blocks=blocks,
+            detail_assets=assets,
+            seen_hashes=set(),
+        )
+        return info or {}
 
     def _maybe_archive_page(
         self,
@@ -668,6 +898,15 @@ class InfoCollectorEngine:
             blocks=blocks,
             assets=assets,
         )
+
+        ocr_engine = (((rule.get("archive") or {}).get("image_ocr") or {}).get("ocr") or {}).get("plugin") or ""
+        if archive_page.get("ocr_results") and ocr_engine:
+            meta = archive_page.setdefault("meta", {})
+            metadata = meta.setdefault("metadata", {})
+            original_content_hash = meta.get("content_hash") or ""
+            metadata["original_content_hash"] = original_content_hash
+            metadata["ocr_engine"] = ocr_engine
+            meta["content_hash"] = ArchiveStore.build_archive_variant_hash(original_content_hash, ocr_engine)
 
         content_hash = (archive_page.get("meta") or {}).get("content_hash") or ""
         body_payload = (html_for_archive or "") + "\n" + ((archive_page.get("content") or {}).get("markdown") or "")
@@ -780,7 +1019,7 @@ class InfoCollectorEngine:
             event_handler(event_status(rule_path, "running", f"采集完成，共 {total_collected} 条"))
 
             # Deduplicate
-            items, dedup_filtered = self.deduplicate(items, rule)
+            items, dedup_filtered, filtered_items = self.deduplicate_detailed(items, rule)
             event_handler(event_status(rule_path, "running", f"去重后 {len(items)} 条新数据"))
 
             # Save output
@@ -793,7 +1032,29 @@ class InfoCollectorEngine:
                 governance_summary=governance_result.summary,
             )
 
-            archive_info = self._archive_after_pipeline(rule, items)
+            finished_for_store = datetime.now(timezone.utc)
+            collection_write = CollectionStore.from_project_config().save_run_items(
+                rule=rule,
+                rule_path=rule_path,
+                items=items,
+                governance_summary=governance_result.summary,
+                total_collected=total_collected,
+                dedup_filtered=dedup_filtered,
+                output_path=output_path,
+                status="partial_success" if governance_result.status == "PARTIAL_SUCCESS" else "success",
+                started_at=datetime.fromtimestamp(start, tz=timezone.utc),
+                finished_at=finished_for_store,
+                duration_seconds=time.time() - start,
+                raw_items=raw_items,
+                filtered_items=filtered_items,
+                deduped_items=items,
+            )
+
+            archive_info = self._archive_after_pipeline(
+                rule,
+                items,
+                progress=lambda msg: event_handler(event_status(rule_path, "running", msg)),
+            )
 
             # Record success
             self.state_mgr.record_finish(
@@ -816,6 +1077,8 @@ class InfoCollectorEngine:
                 "output_path": output_path if output_path != "" else None,
                 "duration": duration,
                 "governance": governance_result.summary,
+                "collection_run_id": collection_write["run_id"],
+                "collection_item_count": len(collection_write["item_ids"]),
             }
             if include_data:
                 result["raw_data"] = raw_items

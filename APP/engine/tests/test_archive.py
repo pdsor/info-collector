@@ -198,6 +198,11 @@ def test_build_archive_page_links_ocr_blocks_to_image_assets():
         "asset_id": "asset-img-001",
         "block_id": "ocr-001",
         "parent_block_id": "img-001",
+        "engine": None,
+        "status": "success",
         "ocr_text": "高质量数据集名单",
         "structured_data": {"rows": [{"name": "数据集 A"}]},
+        "elapsed_seconds": None,
+        "error": None,
+        "manual_review_required": False,
     }

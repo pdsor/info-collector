@@ -5,6 +5,8 @@ import os
 
 from flask import Blueprint, jsonify
 
+from APP.dashboard.apis.rule_scope import is_current_scope
+
 governance_bp = Blueprint("governance", __name__)
 
 DASHBOARD_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -33,6 +35,8 @@ def _load_record(path: str) -> dict | None:
     data = payload.get("data") or []
     subject = meta.get("subject") or ""
     platform = meta.get("platform") or ""
+    if not is_current_scope(subject, platform):
+        return None
     item_count = int(governance.get("item_count", len(data)))
     field_completeness = float(governance.get("field_completeness", 1.0 if data else 0.0))
     quality_score = float(governance.get("quality_score", field_completeness))

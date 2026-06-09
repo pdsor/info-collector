@@ -2,6 +2,8 @@
 
 import os
 from copy import deepcopy
+from hashlib import sha256
+from pathlib import Path
 from uuid import uuid4
 
 from sqlalchemy import (
@@ -19,6 +21,8 @@ from sqlalchemy import (
     text as sql_text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
+
+from .config import get_pg_dsn
 
 
 ARCHIVE_METADATA = MetaData()
@@ -161,14 +165,8 @@ class ArchiveStore:
 
     @classmethod
     def from_rule(cls, rule):
-        """从规则中补充归档主库连接串。"""
-        rule = rule or {}
-        dsn = os.getenv("ARCHIVE_PG_DSN")
-        if not dsn:
-            dsn = rule.get("archive_store", {}).get("dsn")
-        if not dsn:
-            raise ValueError("archive store dsn is required")
-        return cls(dsn=dsn)
+        """从项目级配置读取归档主库连接串。"""
+        return cls(dsn=get_pg_dsn())
 
     def _connect(self):
         """获取 PostgreSQL 连接；测试可注入伪连接。"""
@@ -248,18 +246,19 @@ class ArchiveStore:
     def build_asset_payload(page_id, asset):
         """构建 archive_assets 写入 payload。"""
         record = deepcopy(asset)
+        storage_uri = record.get("storage_uri")
         payload = {
             "page_id": page_id,
             "block_id": record.get("block_id"),
             "asset_type": record.get("asset_type"),
             "source_url": record.get("source_url"),
-            "storage_uri": record.get("storage_uri"),
-            "file_name": record.get("file_name"),
-            "extension": record.get("extension"),
+            "storage_uri": storage_uri,
+            "file_name": record.get("file_name") or (Path(storage_uri).name if storage_uri else None),
+            "extension": record.get("extension") or (Path(storage_uri).suffix.lstrip(".") if storage_uri else None),
             "mime_type": record.get("mime_type"),
             "size_bytes": record.get("size_bytes"),
             "content_hash": record.get("content_hash"),
-            "downloaded": record.get("downloaded"),
+            "downloaded": bool(record.get("downloaded", False)),
             "metadata": deepcopy(record.get("metadata", {}) or {}),
         }
         if record.get("id"):
@@ -331,6 +330,71 @@ class ArchiveStore:
         """插入记录并返回数据库生成的 ID。"""
         statement = insert(table).values(**payload).returning(table.c.id)
         return connection.execute(statement).scalar_one()
+
+    def content_hash_exists(self, content_hash: str) -> bool:
+        """检查归档页内容哈希是否已存在。"""
+        if not content_hash:
+            return False
+        connection = self._connect()
+        try:
+            statement = (
+                sql_text("select 1 from archive_pages where content_hash = :content_hash limit 1")
+                .bindparams(content_hash=content_hash)
+            )
+            return connection.execute(statement).first() is not None
+        finally:
+            close = getattr(connection, "close", None)
+            if close:
+                close()
+
+    def content_hash_satisfies_ocr_engine(self, content_hash: str, engine: str) -> bool:
+        """检查同内容归档是否已满足当前 OCR 引擎要求。"""
+        if not content_hash:
+            return False
+        variant_hash = ArchiveStore.build_archive_variant_hash(content_hash, engine)
+        connection = self._connect()
+        try:
+            statement = sql_text(
+                """
+                select 1
+                from archive_pages p
+                where (
+                    p.content_hash = :variant_hash
+                    or (
+                        p.content_hash = :content_hash
+                        and (
+                            coalesce(p.contains_ocr, false) = false
+                            or p.metadata->>'ocr_engine' = :engine
+                        )
+                    )
+                )
+                  and (
+                    coalesce(p.contains_ocr, false) = false
+                    or exists (
+                      select 1
+                      from ocr_results r
+                      where r.page_id = p.id
+                        and r.engine = :engine
+                      limit 1
+                    )
+                  )
+                limit 1
+                """
+            ).bindparams(content_hash=content_hash, engine=engine)
+            statement = statement.bindparams(variant_hash=variant_hash)
+            return connection.execute(statement).first() is not None
+        finally:
+            close = getattr(connection, "close", None)
+            if close:
+                close()
+
+    @staticmethod
+    def build_archive_variant_hash(content_hash: str, engine: str) -> str:
+        """为同一正文的不同 OCR 引擎生成不同归档唯一键。"""
+        if not content_hash or not engine:
+            return content_hash
+        payload = f"{content_hash}\nocr_engine:{engine}"
+        return sha256(payload.encode("utf-8")).hexdigest()
 
     def save_archive_page(self, archive_page):
         """在一个事务内保存页面、块、资产和 OCR 结果。"""

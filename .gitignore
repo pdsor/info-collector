@@ -9,6 +9,10 @@ dist/
 .eggs/
 venv/
 .venv/
+node_modules/
+APP/dashboard/web/node_modules/
+APP/engine/.venv-paddleocr/
+APP/engine/config.yaml
 
 # Test
 .pytest_cache/

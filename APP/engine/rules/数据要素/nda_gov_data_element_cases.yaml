@@ -1,0 +1,92 @@
+name: "国家数据局 - 数据要素×典型案例"
+rule_id: "nda_gov_data_element_cases"
+source_id: "nda_gov"
+subject: "数据要素"
+version: "1.1.0"
+description: '采集国家数据局"数据要素×"三年行动典型案例：列表→文章页归档（含图像 OCR）'
+enabled: true
+
+source:
+  platform: "nda_gov"
+  type: "html"
+  client: "desktop"
+  subject: "数据要素"
+  url: "https://www.nda.gov.cn/sjj/zhuanti/ztsjysx/sjysal/list/index_pc_1.html"
+
+list:
+  items_path: "xpath://ul/li[.//span]"
+  pagination:
+    type: url_template
+    url_template: "https://www.nda.gov.cn/sjj/zhuanti/ztsjysx/sjysal/list/index_pc_{page}.html"
+    start_page: 1
+    max_pages: 5
+
+extract:
+  title:
+    selector: "a"
+    type: "text"
+  url:
+    selector: "a"
+    type: "attr"
+    attr: "href"
+    base_url: "https://www.nda.gov.cn"
+  publish_time:
+    selector: "span"
+    type: "text"
+
+dedup:
+  incremental: true
+  id_template: "nda_gov_{article_id}"
+  url_to_id_pattern: '/(\d{14}\d+)_pc\.html'
+
+discovery:
+  enabled: true
+  list:
+    items_path: "xpath://ul/li[.//span]"
+    title:
+      selector: "a"
+    detail_url:
+      selector: "a"
+      attribute: "href"
+archive:
+  enabled: true
+  detail:
+    metadata:
+      title:
+        selector: ".detail h1"
+        type: "text"
+      content:
+        selector: ".detail .article"
+        type: "html"
+      publish_time:
+        selector: ".detail .shezhi"
+        type: "text"
+  # 即使详情页含插图，也下载并 OCR，作为 image / ocr block 入归档
+  image_ocr:
+    enabled: true
+    images:
+      selector: ".detail .article img"
+      src_attribute: "src"
+      include_alt: true
+      max_images: 20
+    download:
+      dir_template: "/tmp/scraper_imgs/{task_id}"
+      retries: 3
+      retry_interval_seconds: 2
+      timeout_seconds: 20
+      max_size_mb: 8
+    ocr:
+      plugin: "paddleocr"
+      lang: "ch"
+      text_detection_model_name: "PP-OCRv5_mobile_det"
+      text_recognition_model_name: "PP-OCRv5_mobile_rec"
+      text_det_limit_side_len: 960
+      home: "/tmp/paddleocr-home"
+      timeout_seconds: 7200
+    fallback:
+      ocr_unavailable: "manual_review"
+      ocr_empty: "manual_review"
+
+output:
+  format: "json"
+  filename_template: "nda_gov_data_element_cases_{date}.json"

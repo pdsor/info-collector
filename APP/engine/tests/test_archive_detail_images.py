@@ -126,6 +126,21 @@ def _bind_store(monkeypatch, store):
     )
 
 
+def _bind_collection_store(monkeypatch):
+    class _CollectionStore:
+        def save_run_items(self, **kwargs):
+            return {
+                "run_id": "run-uuid-1",
+                "item_ids": [f"item-{idx}" for idx, _ in enumerate(kwargs.get("items", []), start=1)],
+                "governance_record_id": "gov-uuid-1",
+            }
+
+    monkeypatch.setattr(
+        "engine.engine.CollectionStore.from_project_config",
+        classmethod(lambda cls: _CollectionStore()),
+    )
+
+
 def _bind_save_pkg(monkeypatch, engine, tmp_path):
     monkeypatch.setattr(
         engine.output_mgr, "save_archive_package", lambda page, rule: str(tmp_path / "pkg")
@@ -158,6 +173,7 @@ def test_image_ocr_disabled_skips_image_blocks(tmp_path, monkeypatch):
         state_dir=str(tmp_path / "state"),
     )
     _stub_html(monkeypatch, engine)
+    _bind_collection_store(monkeypatch)
     _bind_save_pkg(monkeypatch, engine, tmp_path)
     store = _RecordingStore()
     _bind_store(monkeypatch, store)
@@ -178,6 +194,7 @@ def test_image_ocr_enabled_emits_image_and_ocr_blocks(tmp_path, monkeypatch):
         state_dir=str(tmp_path / "state"),
     )
     _stub_html(monkeypatch, engine)
+    _bind_collection_store(monkeypatch)
     _bind_save_pkg(monkeypatch, engine, tmp_path)
     downloaded = _bind_download(monkeypatch, tmp_path)
     _bind_plugin(monkeypatch, _FakePlugin(_FakeOcrResult(text="第三批名单 序号 1 数据集 A")))
@@ -211,6 +228,7 @@ def test_image_ocr_download_failure_skips_image_but_succeeds(tmp_path, monkeypat
         state_dir=str(tmp_path / "state"),
     )
     _stub_html(monkeypatch, engine)
+    _bind_collection_store(monkeypatch)
     _bind_save_pkg(monkeypatch, engine, tmp_path)
     _bind_download(
         monkeypatch,
@@ -237,6 +255,7 @@ def test_image_ocr_empty_text_marks_manual_review(tmp_path, monkeypatch):
         state_dir=str(tmp_path / "state"),
     )
     _stub_html(monkeypatch, engine)
+    _bind_collection_store(monkeypatch)
     _bind_save_pkg(monkeypatch, engine, tmp_path)
     _bind_download(monkeypatch, tmp_path)
     _bind_plugin(monkeypatch, _FakePlugin(_FakeOcrResult(text="")))

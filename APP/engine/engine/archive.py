@@ -170,8 +170,13 @@ def _build_ocr_results(blocks):
                 "asset_id": block.get("asset_id"),
                 "block_id": block.get("id"),
                 "parent_block_id": block.get("parent_block_id"),
+                "engine": block.get("engine"),
+                "status": block.get("status") or "success",
                 "ocr_text": block.get("ocr_text") or block.get("text") or "",
                 "structured_data": block.get("structured_data") or {},
+                "elapsed_seconds": block.get("elapsed_seconds"),
+                "error": block.get("error"),
+                "manual_review_required": bool(block.get("manual_review_required", False)),
             }
         )
     return results

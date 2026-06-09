@@ -1,32 +1,42 @@
 """Browser Crawler - handles JavaScript-rendered pages and anti-bot protection."""
 from typing import Optional
-from .crawlers import PlaywrightCrawler, USER_AGENTS
+from .crawlers import PlaywrightCrawler, CloakBrowserCrawler, USER_AGENTS
+
+
+# client 别名 → 实现类。新增 cloakbrowser 用于绕过瑞数/Cloudflare 等 JS WAF
+_CLIENT_REGISTRY = {
+    "browser": PlaywrightCrawler,
+    "playwright": PlaywrightCrawler,
+    "cloakbrowser": CloakBrowserCrawler,
+    "cloak": CloakBrowserCrawler,
+}
 
 
 class BrowserCrawler:
-    """确定性浏览器渲染器，仅委托 PlaywrightCrawler。
-    
+    """确定性浏览器渲染器，按 client 委托给具体实现。
+
     Args:
-        client: "browser" (default, aliases to playwright) or "playwright"
+        client: "browser" / "playwright" (默认) | "cloakbrowser" / "cloak"
     """
-    
+
     def __init__(self, client: str = None):
-        """client: "browser" or "playwright"。"""
+        """client: 选择具体浏览器实现。"""
         self._client = client or "browser"
         self._impl: Optional[object] = None
         self._impl_type: Optional[str] = None
         self._ensure_impl()
-    
+
     def _ensure_impl(self):
         """Lazy init based on current _client"""
-        if self._impl_type != self._client:
-            if self._client in {"browser", "playwright"}:
-                self._impl = PlaywrightCrawler()
-            elif self._client == "crawl4ai":
-                raise ValueError("Crawl4AI 已从 v2.2 架构移除，请使用 Playwright 规则渲染")
-            else:
-                raise ValueError(f"Unknown client: {self._client}")
-            self._impl_type = self._client
+        if self._impl_type == self._client:
+            return
+        if self._client == "crawl4ai":
+            raise ValueError("Crawl4AI 已从 v2.2 架构移除，请使用 Playwright 或 CloakBrowser 渲染")
+        impl_cls = _CLIENT_REGISTRY.get(self._client)
+        if impl_cls is None:
+            raise ValueError(f"Unknown client: {self._client}")
+        self._impl = impl_cls()
+        self._impl_type = self._client
     
     def switch_client(self, client: str):
         """Switch crawler implementation (closes old one first)"""

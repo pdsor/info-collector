@@ -1,0 +1,202 @@
+Info Collector NG 项目阅读总结
+生成日期：2026-06-02
+
+一、阅读依据
+
+本总结依据以下材料整理：
+1. git 提交历史，重点参考 2026-05-06 至 2026-05-25 的提交记录，当前 HEAD 为 bae0175（Phase2：DOM漂移基线跟踪 + Source信任分自动更新）。
+2. 当前需求来源文档 DOCS/LatestRequirementDocument.md，版本 v2.2，核心定位为无 AI、规则驱动的互联网公开信息采集与治理平台。
+3. 当前系统目录、接口、测试文件与工作区现状，包括 APP/engine、APP/dashboard、DOCS、docs/superpowers/plans 等模块。
+4. 当前工作区存在未提交改动，主要包括 Dashboard 前端由旧 static 页面迁移到 APP/dashboard/web 的 Vue/Vite 工程，以及引擎新增 CloakBrowser crawler、规则调整等内容。本文对已提交成果和在制内容做了区分。
+
+二、总体判断
+
+项目已经从早期“可运行的采集脚本 + 本地看板”推进到“规则驱动采集引擎 + 本地管理控制台 + 页面归档 + OCR 精抽 + 数据治理”的阶段性系统。
+
+当前实现与 LatestRequirementDocument.md v2.2 的方向基本一致：系统不依赖 LLM、不集成 Agent，采集、解析、治理、健康度检测均以 YAML 规则、选择器、确定性算法和人工维护为主。
+
+从阶段路线看，Phase 1 稳定化已经基本形成骨架；Phase 2 治理化已经开始落地，尤其是 SimHash 近似去重、字段完整率、注入风险检测、规则健康度、DOM 漂移基线、Source 信任分自动更新等能力已经进入代码和接口层。Phase 3 扩展化、Phase 4 知识化仍处在后续规划阶段。
+
+三、本月已经完成的主要工作
+
+1. 规则驱动采集引擎骨架完成
+
+已完成 YAML 规则驱动的采集执行链路，支持旧规则与 Rule v2 最小结构。引擎侧已有 rule_parser、crawl_html、crawl_api、crawl_browser、engine_cli、output、state、governance 等模块，并配套较多 pytest 测试。
+
+采集客户端从早期 Crawl4AI 方案调整为无 AI 的确定性路线。提交历史中曾引入 Crawl4AI，但后续已通过“移除Crawl4AI集成，browser客户端改为Playwright”等提交回到 Playwright + parsel/lxml 的架构，与 v2.2 文档要求一致。
+
+2. Dashboard 本地管理控制台形成
+
+Dashboard 已提供 Flask API 和本地 SQLite 数据库迁移，具备 Source、Rule、Task、Governance、Archive、Data、Cron、Logs、Health 等 API 模块。
+
+当前已提交版本包含本地管理控制台能力：Source Center 从规则派生来源注册表，Rule Center 管理 YAML 规则，Task Center 触发采集并记录状态，Governance Center 展示治理摘要，Archive API 支持读取归档包摘要和详情。
+
+当前工作区还存在一个新的 APP/dashboard/web Vue/Vite 前端工程，包含来源中心、规则中心、任务中心、治理中心、归档中心等视图，以及统一布局、主题、API 客户端、状态标签、表格组合式逻辑等内容。这部分属于在制或未提交成果。
+
+3. 页面归档链路完成阶段性闭环
+
+页面归档从设计、对象建模、调试包输出、PostgreSQL 表结构、归档存储接口，到采集执行链路接入，已经逐步完成。
+
+已实现的能力包括：
+- 归档对象与归档存储接口。
+- 页面归档调试包输出。
+- 归档主库配置和 PostgreSQL 写入层。
+- archive.enabled=true 时，在采集执行完成后组装归档对象并输出归档结果。
+- discovery 到详情页归档的最小闭环。
+- 列表多候选批量详情归档，支持 max_details、候选 URL 去重、同次 run 内容哈希去重。
+- 列表翻页能力与 PG 集成测试框架。
+
+这意味着系统已经不是只输出 combined_latest.json 的采集工具，而是开始具备“页面级资产归档”和“可复核采集证据”的能力。
+
+4. 图片 OCR 与结构化抽取能力落地
+
+围绕政务、金融、公告类网页中“表格或关键内容以图片形式呈现”的场景，项目完成了本地 OCR 链路的多个切片。
+
+已完成的能力包括：
+- OCR 插件包入口与运行依赖。
+- OCR 版面词块结果。
+- OCR 坐标表格逐行解析。
+- OCR 坐标解析降级测试。
+- 图片 OCR 链路使用坐标表格解析。
+- OCR 不完整行保留人工复核信息。
+- 详情页图片与 OCR 块入库。
+- OCR 精抽写入 structured_records。
+- 图片 OCR 精抽改进、行重编号与治理管道接入。
+
+该部分让系统可以处理传统 CSS/XPath/JSONPath 无法直接抽取的图片表格数据，并将结果纳入归档和治理流程。
+
+5. 数据治理能力进入 Phase 2
+
+治理管道已经具备确定性清洗和质量评估能力。当前 governance.py 中可以对采集记录进行 HTML 清洗、控制字符清理、提示注入风险识别、字段完整率计算、质量分计算，以及 hash/minhash/simhash 去重。
+
+最近提交重点完成了：
+- 输出结果携带治理摘要。
+- SimHash 近似去重。
+- 规则健康度检测 API。
+- DOM 漂移基线跟踪。
+- Source 信任分基于治理质量记录自动更新。
+
+这些能力是 Phase 2 治理化的核心基础，为后续把数据交给检索、知识库或下游系统提供了质量门槛。
+
+6. 测试和工程约束增强
+
+项目已经形成较完整的测试目录。引擎侧覆盖规则解析、HTML/API/浏览器采集、输出目录、去重、治理、归档、OCR、分页、CLI、状态管理等模块；Dashboard 侧覆盖 Archive API、Health API、Rules Preview API、Source 信任分等接口。
+
+项目文档、编码约束和验证脚本也有补充，包括 AGENTS.md、YAML 规则编写手册、PostgreSQL 验证脚本、阶段计划文档等。
+
+四、当前形成的阶段性成果
+
+1. 一个无 AI 的规则驱动采集与治理平台原型
+
+系统核心定位已经稳定：人工维护 YAML 规则，系统负责执行、校验、归档、治理和展示，不自动生成规则，不调用 LLM，不把 AI Agent 放进主链路。
+
+2. 一个可运行的本地管理控制台
+
+Dashboard 具备本地 API 服务、SQLite 数据库迁移、定时任务调度、任务日志、规则操作、来源汇总、治理汇总和归档查看能力。当前未提交的 Vue/Vite 工程进一步增强了企业控制台风格和模块化前端工程化基础。
+
+3. 一个可扩展的采集执行引擎
+
+引擎已经支持 HTTP、API、Playwright 浏览器渲染、规则选择器提取、治理摘要、归档输出、详情页发现、批量详情归档、OCR 块处理、structured_records 写入等能力。
+
+4. 一套页面归档和数据资产化基础
+
+系统已经能够从“采集结果”扩展到“页面资产”层面，保留页面、块、图片资产、OCR 结果和结构化记录之间的关系，为后续审计、复核、知识抽取和长期存储提供基础。
+
+5. 一套 Phase 2 治理化基础指标
+
+系统已经具备近似去重、字段完整率、质量分、注入风险、规则健康度、DOM 漂移、Source 信任分等指标。后续可以基于这些指标继续建设告警、规则修复流程和来源分级管理。
+
+五、当前仍需关注的问题
+
+1. 工作区存在未提交改动
+
+当前 git status 显示 APP/dashboard/server.py、APP/engine/engine.py、engine_cli.py、crawl_browser.py、requirements.txt 等文件有修改；旧 static 前端文件被删除；APP/dashboard/web、cloakbrowser_crawler.py、新规则和部分文档为新增未跟踪内容。建议下月开始前先完成一次变更审计、测试验证和提交归档，避免已完成成果和在制功能混在一起。
+
+2. README 与当前前端结构存在轻微不一致
+
+README 仍描述 Dashboard 为 Flask + Vue 3 CDN + static 前端，但当前工作区已出现 Vue/Vite 工程，server.py 也已经改为服务 static/dist 构建产物。需要在前端迁移完成后同步更新 README、启动说明和验证命令。
+
+3. 生产化基础设施尚未全面落地
+
+需求文档中提到的 Celery、PostgreSQL、MinIO、Elasticsearch、Milvus 等生产化组件，目前仍以本地 SQLite、调试包、测试桩或阶段性 PostgreSQL 写入层为主。MVP 可以接受，但下月若要进入稳定使用，需要明确哪些组件要正式接入，哪些继续保持本地替代。
+
+4. 规则生态和模板能力还不够成熟
+
+当前已有规则编写手册和若干 YAML 规则，但 Phase 3 所需的更多 Source 类型、规则模板库、规则市场或规则复用机制尚未形成。规则编写门槛仍然偏高。
+
+5. 健康度告警闭环仍需补齐
+
+当前 Health API 可以做选择器命中检测、DOM 哈希、漂移对比和 baseline 保存，但告警展示、确认、处理记录、规则修复后复测、通知配置等闭环还需要继续建设。
+
+六、下个月后续计划建议
+
+1. 第一周：收口当前未提交工作区
+
+建议先完成当前工作区的变更审计。重点确认 Vue/Vite 前端迁移、旧 static 文件删除、server.py 服务 dist、CloakBrowser crawler、新规则、OCR 与引擎变更是否都属于同一阶段目标。
+
+完成后建议执行：
+- Dashboard 前端构建与单元测试。
+- Dashboard API 测试。
+- 引擎 pytest 全量或核心回归。
+- PostgreSQL 写入层验证脚本。
+- 规则 smoke 测试。
+
+通过验证后，以中文 commit message 分批提交，避免一次提交混合前端迁移、引擎扩展、规则替换和文档更新。
+
+2. 第二周：完成 Dashboard NG 前端正式化
+
+将 APP/dashboard/web 的 Vue/Vite 工程正式纳入主线，补齐构建产物服务、开发启动说明、接口错误态、加载态、空状态、权限指令、状态标签和核心页面交互。
+
+重点页面建议按以下顺序收口：
+- Source Center：来源列表、信任分、健康状态、启停状态、规则路径。
+- Rule Center：规则列表、YAML 查看/编辑、沙箱预览、启停、运行。
+- Task Center：任务历史、实时日志、状态机、失败原因。
+- Governance Center：去重统计、字段完整率、质量分、注入风险。
+- Archive Center：归档页面列表、详情、OCR 块、structured_records 复核。
+
+3. 第三周：补齐 Phase 2 治理闭环
+
+围绕“数据可直接用于下游知识检索”的目标，建议补齐治理指标的落库、展示和处理闭环。
+
+建议任务包括：
+- 将规则健康度检查结果和 DOM 漂移结果形成历史记录，而不只保存在 sidecar。
+- 在 Dashboard 中展示规则健康度趋势、最近检测时间、漂移状态和选择器命中详情。
+- Source 信任分增加解释字段，展示由哪些质量指标计算得出。
+- 对治理失败、字段完整率低、注入风险高、重复率高的任务形成可筛选列表。
+- 建立“人工复核后重新运行规则健康检查”的操作闭环。
+
+4. 第四周：推进 Phase 3 扩展化准备
+
+在 Phase 2 基础稳定后，开始为 Phase 3 做规则生态和多 Source 类型扩展。
+
+建议任务包括：
+- 建立规则模板库，至少覆盖新闻/公告、政务目录、API JSON、列表详情页、图片 OCR 表格等典型场景。
+- 建立规则 Schema 校验和示例规则自动测试，防止规则改动破坏引擎。
+- 明确 CloakBrowser crawler 的定位：如果作为反爬或浏览器池扩展，需要补齐配置、测试和文档；如果只是实验项，应单独隔离。
+- 完善规则沙箱预览，不写正式输出、不污染去重库，返回字段样例、治理摘要、健康度摘要和 OCR 复核信息。
+
+5. 中长期准备：知识化能力边界确认
+
+Phase 4 的实体抽取、事件时间线、Embedding、Knowledge API 仍未进入主实现。建议下月末形成一份边界设计，明确哪些知识化能力由本系统提供，哪些交给下游系统。
+
+建议先做确定性能力：
+- 基于规则字段的实体抽取。
+- 基于发布时间、标题、来源、标签的事件时间线。
+- 对外 Knowledge API 的最小查询接口。
+- Embedding 仅作为可选本地服务，不改变系统无 AI 主链路定位。
+
+七、建议的下月验收标准
+
+1. 当前工作区所有在制改动完成审计并分批提交。
+2. Dashboard Vue/Vite 前端可以按文档启动、构建，并由 Flask 正常服务构建产物。
+3. Source、Rule、Task、Governance、Archive 五个中心至少完成可用闭环。
+4. 规则健康度、DOM 漂移、Source 信任分、治理摘要能够在 Dashboard 中被查看。
+5. 引擎核心测试、Dashboard API 测试、前端单元测试和基础构建命令通过。
+6. 至少保留 3 类可演示规则：普通 HTML 列表/详情、API JSON、图片 OCR 表格。
+7. 页面归档、OCR、structured_records、治理摘要可以在一次采集任务中形成完整可复核结果。
+
+八、结论
+
+当前项目已经形成了清晰的规则驱动架构、可运行的采集引擎、本地管理控制台、页面归档基础、OCR 精抽链路和 Phase 2 治理能力。下一阶段不宜继续横向堆叠新功能，优先级应放在当前未提交改动收口、Dashboard NG 前端正式化、治理闭环可视化、规则模板沉淀和验证体系稳定上。
+
+如果下个月能完成上述收口，Info Collector NG 将从“工程原型”进一步进入“可演示、可复核、可扩展的本地 MVP”状态，并具备向生产化基础设施替换和知识化能力扩展的基础。

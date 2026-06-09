@@ -1,0 +1,2 @@
+database:
+  pg_dsn: "postgresql://postgres:<password>@<host>:5432/info_collector"

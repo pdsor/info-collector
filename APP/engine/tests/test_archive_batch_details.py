@@ -101,6 +101,21 @@ def _bind_store(monkeypatch, store):
     )
 
 
+def _bind_collection_store(monkeypatch):
+    class _CollectionStore:
+        def save_run_items(self, **kwargs):
+            return {
+                "run_id": "run-uuid-1",
+                "item_ids": [f"item-{idx}" for idx, _ in enumerate(kwargs.get("items", []), start=1)],
+                "governance_record_id": "gov-uuid-1",
+            }
+
+    monkeypatch.setattr(
+        "engine.engine.CollectionStore.from_project_config",
+        classmethod(lambda cls: _CollectionStore()),
+    )
+
+
 def _bind_save_pkg(monkeypatch, engine, tmp_path):
     counter = {"n": 0}
 
@@ -124,20 +139,21 @@ def _distinct_detail(url):
     return DETAIL_HTML_TEMPLATE.format(title=f"标题 {url}", body=f"正文 {url}")
 
 
-def test_default_max_details_is_one(tmp_path, monkeypatch):
+def test_default_max_details_is_unlimited(tmp_path, monkeypatch):
     rule_path = _write_rule(tmp_path, max_details=None)
     engine = InfoCollectorEngine(
         dedup_db_path=str(tmp_path / "dedup.db"),
         state_dir=str(tmp_path / "state"),
     )
     _stub_html(monkeypatch, engine, LIST_HTML_FIVE, _distinct_detail)
+    _bind_collection_store(monkeypatch)
     _bind_save_pkg(monkeypatch, engine, tmp_path)
     store = _RecordingStore()
     _bind_store(monkeypatch, store)
 
     result = engine.run(rule_path)
 
-    assert len(store.saved) == 1
+    assert len(store.saved) == 5
     assert result["archive_page_id"] == "page-uuid-1"
 
 
@@ -148,6 +164,7 @@ def test_max_details_limits_archives(tmp_path, monkeypatch):
         state_dir=str(tmp_path / "state"),
     )
     _stub_html(monkeypatch, engine, LIST_HTML_FIVE, _distinct_detail)
+    _bind_collection_store(monkeypatch)
     _bind_save_pkg(monkeypatch, engine, tmp_path)
     store = _RecordingStore()
     _bind_store(monkeypatch, store)
@@ -171,6 +188,7 @@ def test_url_dedup_skips_duplicate_link(tmp_path, monkeypatch):
         state_dir=str(tmp_path / "state"),
     )
     _stub_html(monkeypatch, engine, LIST_HTML_DUPLICATES, _distinct_detail)
+    _bind_collection_store(monkeypatch)
     _bind_save_pkg(monkeypatch, engine, tmp_path)
     store = _RecordingStore()
     _bind_store(monkeypatch, store)
@@ -193,6 +211,7 @@ def test_content_hash_dedup_skips_same_payload(tmp_path, monkeypatch):
     )
     identical = DETAIL_HTML_TEMPLATE.format(title="一致标题", body="一致正文")
     _stub_html(monkeypatch, engine, LIST_HTML_FIVE, lambda url: identical)
+    _bind_collection_store(monkeypatch)
     _bind_save_pkg(monkeypatch, engine, tmp_path)
     store = _RecordingStore()
     _bind_store(monkeypatch, store)

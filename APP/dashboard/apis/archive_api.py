@@ -5,6 +5,8 @@ import os
 
 from flask import Blueprint, jsonify
 
+from APP.dashboard.apis.rule_scope import is_current_scope
+
 archive_bp = Blueprint("archives", __name__)
 
 DASHBOARD_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -30,13 +32,17 @@ def _load_page_summary(path: str) -> dict | None:
         return None
     blocks = payload.get("blocks") or []
     block_types = [b.get("block_type") for b in blocks]
+    subject = meta.get("subject") or ""
+    platform = meta.get("platform") or ""
+    if not is_current_scope(subject, platform):
+        return None
     return {
         "content_hash": content_hash,
         "title": meta.get("title") or "",
         "source_url": meta.get("source_url") or "",
         "domain": meta.get("domain") or "",
-        "platform": meta.get("platform") or "",
-        "subject": meta.get("subject") or "",
+        "platform": platform,
+        "subject": subject,
         "fetched_at": meta.get("fetched_at") or "",
         "contains_ocr": bool(meta.get("contains_ocr")),
         "contains_table": bool(meta.get("contains_table")),
@@ -72,6 +78,9 @@ def get_archive(content_hash: str):
             payload = json.load(f)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
+    meta = payload.get("meta") or {}
+    if not is_current_scope(meta.get("subject") or "", meta.get("platform") or ""):
+        return jsonify({"error": "not found"}), 404
 
     # Try to load structured_records sidecar if present
     sr_path = os.path.join(os.path.dirname(matches[0]), "structured_records.json")
@@ -84,7 +93,7 @@ def get_archive(content_hash: str):
             pass
 
     return jsonify({
-        "meta": payload.get("meta") or {},
+        "meta": meta,
         "blocks": payload.get("blocks") or [],
         "assets": payload.get("assets") or [],
         "structured_records": structured_records,
