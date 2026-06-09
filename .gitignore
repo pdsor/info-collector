@@ -24,6 +24,8 @@ output/
 dedup.db
 *.db
 dashboard.db
+APP/engine/data/
+APP/engine/output/
 APP/engine/engine/data/
 APP/engine/logs/
 
