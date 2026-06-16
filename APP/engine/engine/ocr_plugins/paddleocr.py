@@ -39,7 +39,7 @@ def _build_command(image_path: str, config: dict, output_path: Path) -> list[str
     limit_side_len = str(int(config.get("text_det_limit_side_len") or config.get("limit_side_len") or 960))
     lang = config.get("lang") or "ch"
 
-    return [
+    command = [
         str(python_path),
         str(runner_path),
         image_path,
@@ -56,6 +56,12 @@ def _build_command(image_path: str, config: dict, output_path: Path) -> list[str
         "--limit-side-len",
         limit_side_len,
     ]
+    if config.get("table_recognition"):
+        command.append("--table-recognition")
+        pipeline = config.get("table_recognition_pipeline")
+        if pipeline:
+            command.extend(["--table-recognition-pipeline", str(pipeline)])
+    return command
 
 
 def _load_payload(output_path: Path) -> dict:
@@ -82,10 +88,13 @@ def _image_pixels(image_info: dict) -> int:
 
 def _evaluate_quality(text: str, payload: dict, config: dict) -> tuple[str, str, list[str]]:
     """根据通用 OCR 指标评估质量状态。"""
-    stripped = text.strip()
+    table_structure_html = payload.get("table_structure_html") or ""
+    stripped = (table_structure_html or text).strip()
     min_text_length, min_line_count, large_image_pixels = _read_quality_thresholds(config)
+    table_structure = payload.get("table_structure") or {}
     lines = payload.get("lines") or []
-    line_count = len(lines)
+    table_row_count = int(table_structure.get("row_count") or 0)
+    line_count = table_row_count if table_structure_html.strip() and table_row_count > 0 else len(lines)
     image_pixels = _image_pixels(payload.get("image") or {})
 
     if not stripped:
@@ -136,13 +145,18 @@ class PaddleOcrPlugin:
                 raise RuntimeError(stderr or stdout or f"PaddleOCR 退出码: {completed.returncode}")
 
             payload = _load_payload(output_path)
+            table_structure_html = payload.get("table_structure_html") or ""
+            table_structure_markdown = payload.get("table_structure_markdown") or ""
             markdown = payload.get("table_markdown") or ""
             raw_text = payload.get("text") or ""
-            text = markdown or raw_text
+            text = table_structure_markdown or markdown or raw_text
             status, quality_status, quality_reasons = _evaluate_quality(text, payload, config)
             structured_data = {
                 "raw_text": raw_text,
                 "markdown": markdown,
+                "table_structure_markdown": table_structure_markdown,
+                "table_structure_html": table_structure_html,
+                "table_structure": payload.get("table_structure") or {},
                 "corrections": payload.get("corrections") or [],
                 "lines": payload.get("lines") or [],
                 "image": payload.get("image") or {},

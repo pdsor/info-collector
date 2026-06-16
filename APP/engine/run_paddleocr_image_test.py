@@ -6,8 +6,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import time
 from datetime import datetime
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
@@ -45,7 +47,7 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_json_safe(v) for v in value]
     if hasattr(value, "tolist"):
-        return value.tolist()
+        return _json_safe(value.tolist())
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
     return str(value)
@@ -67,6 +69,119 @@ def _result_to_dict(result: Any) -> dict[str, Any]:
     if isinstance(result, dict):
         return _json_safe(result)
     return {"raw": _json_safe(result)}
+
+
+def _extract_table_markdown(payloads: list[dict[str, Any]]) -> str:
+    normalized_payloads = [
+        payload.get("res") if isinstance(payload.get("res"), dict) else payload
+        for payload in payloads
+    ]
+    table_payloads = []
+    for res in normalized_payloads:
+        table_payloads.append(res)
+        table_res_list = res.get("table_res_list")
+        if isinstance(table_res_list, list):
+            table_payloads.extend(item for item in table_res_list if isinstance(item, dict))
+    for res in table_payloads:
+        for key in ("markdown", "table_markdown", "md"):
+            value = res.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+    for res in table_payloads:
+        for key in ("html", "table_html", "pred_html"):
+            value = res.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+    return ""
+
+
+class _TableHtmlParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.rows: list[list[str]] = []
+        self._current_row: list[str] | None = None
+        self._current_cell: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "tr":
+            self._current_row = []
+        elif tag in {"td", "th"} and self._current_row is not None:
+            self._current_cell = []
+
+    def handle_data(self, data: str) -> None:
+        if self._current_cell is not None:
+            self._current_cell.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"td", "th"} and self._current_row is not None and self._current_cell is not None:
+            self._current_row.append(" ".join("".join(self._current_cell).split()))
+            self._current_cell = None
+        elif tag == "tr" and self._current_row is not None:
+            if any(cell.strip() for cell in self._current_row):
+                self.rows.append(self._current_row)
+            self._current_row = None
+
+
+def _html_table_to_markdown(table_html: str) -> str:
+    parser = _TableHtmlParser()
+    parser.feed(table_html)
+    rows = parser.rows
+    if not rows:
+        return ""
+    column_count = max(len(row) for row in rows)
+    normalized_rows = [row + [""] * (column_count - len(row)) for row in rows]
+    lines = [
+        "| " + " | ".join(_markdown_cell(cell) for cell in normalized_rows[0]) + " |",
+        "| " + " | ".join("---" for _ in range(column_count)) + " |",
+    ]
+    for row in normalized_rows[1:]:
+        lines.append("| " + " | ".join(_markdown_cell(cell) for cell in row) + " |")
+    return "\n".join(lines)
+
+
+def _count_table_rows(table_html: str) -> int:
+    rows = re.findall(r"<tr\b", table_html, flags=re.I)
+    return max(len(rows) - 1, 0) if rows else 0
+
+
+def _run_table_recognition(
+    image_path: Path,
+    pipeline_name: str,
+    limit_side_len: int,
+) -> tuple[str, dict[str, Any]]:
+    if pipeline_name == "TableRecognitionPipelineV2":
+        from paddleocr import TableRecognitionPipelineV2
+
+        pipeline = TableRecognitionPipelineV2(
+            text_det_limit_side_len=limit_side_len,
+            use_doc_orientation_classify=False,
+            use_doc_unwarping=False,
+            use_layout_detection=False,
+            use_ocr_model=True,
+        )
+    elif pipeline_name == "PPStructureV3":
+        from paddleocr import PPStructureV3
+
+        pipeline = PPStructureV3(
+            use_doc_orientation_classify=False,
+            use_doc_unwarping=False,
+            use_textline_orientation=False,
+        )
+    else:
+        raise ValueError(f"不支持的表格结构识别管线: {pipeline_name}")
+
+    raw_results = pipeline.predict(str(image_path))
+    payloads = [
+        _result_to_dict(item)
+        for item in (raw_results if isinstance(raw_results, list) else [raw_results])
+    ]
+    table_html = _extract_table_markdown(payloads)
+    table_markdown = _html_table_to_markdown(table_html) if table_html.lstrip().startswith("<") else table_html
+    return table_html, table_markdown, {
+        "pipeline": pipeline_name,
+        "row_count": _count_table_rows(table_html),
+        "raw_results": payloads,
+    }
 
 
 def _extract_texts(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -321,6 +436,13 @@ def main() -> int:
     parser.add_argument("--det-model", default="PP-OCRv5_mobile_det", help="文本检测模型名")
     parser.add_argument("--rec-model", default="PP-OCRv5_mobile_rec", help="文本识别模型名")
     parser.add_argument("--limit-side-len", type=int, default=960, help="检测输入长边限制")
+    parser.add_argument("--table-recognition", action="store_true", help="启用 PaddleOCR 表格结构识别")
+    parser.add_argument(
+        "--table-recognition-pipeline",
+        default="TableRecognitionPipelineV2",
+        choices=("TableRecognitionPipelineV2", "PPStructureV3"),
+        help="表格结构识别管线",
+    )
     parser.add_argument("--preview-chars", type=int, default=3000, help="控制台预览字符数")
     parser.add_argument("--check-only", action="store_true", help="只检查图片和环境，不执行 OCR")
     args = parser.parse_args()
@@ -348,6 +470,8 @@ def main() -> int:
         "use_doc_orientation_classify": False,
         "use_doc_unwarping": False,
         "use_textline_orientation": False,
+        "table_recognition": args.table_recognition,
+        "table_recognition_pipeline": args.table_recognition_pipeline,
         "home": str(home),
     }
     print(json.dumps(config, ensure_ascii=False, indent=2))
@@ -380,6 +504,17 @@ def main() -> int:
         lines.extend(_extract_texts(payload))
     text = _markdown_from_lines(lines)
     table_markdown, corrections = _table_markdown_from_lines(lines, info["width"])
+    table_structure_html = ""
+    table_structure_markdown = ""
+    table_structure: dict[str, Any] = {}
+    if args.table_recognition:
+        table_started = time.time()
+        table_structure_html, table_structure_markdown, table_structure = _run_table_recognition(
+            image_path=image_path,
+            pipeline_name=args.table_recognition_pipeline,
+            limit_side_len=args.limit_side_len,
+        )
+        table_structure["wall_seconds"] = round(time.time() - table_started, 2)
     payload = {
         "started_at": started_at,
         "finished_at": datetime.now().isoformat(),
@@ -391,19 +526,22 @@ def main() -> int:
         "lines": lines,
         "text": text,
         "table_markdown": table_markdown,
+        "table_structure_html": table_structure_html,
+        "table_structure_markdown": table_structure_markdown,
+        "table_structure": table_structure,
         "corrections": corrections,
         "raw_results": result_payloads,
     }
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     text_path.write_text(text, encoding="utf-8")
-    markdown_path.write_text(table_markdown or text, encoding="utf-8")
+    markdown_path.write_text(table_structure_markdown or table_markdown or text, encoding="utf-8")
 
     print("PaddleOCR 结束")
     print(f"wall_seconds: {elapsed}")
     print(f"line_count: {len(lines)}")
     print(f"text_length: {len(text)}")
     print("文本预览:")
-    print((table_markdown or text)[: max(args.preview_chars, 0)])
+    print((table_structure_markdown or table_markdown or text)[: max(args.preview_chars, 0)])
     print(f"完整 JSON 已写入: {output_path}")
     print(f"完整文本已写入: {text_path}")
     print(f"Markdown 已写入: {markdown_path}")

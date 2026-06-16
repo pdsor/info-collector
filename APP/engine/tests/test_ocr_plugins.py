@@ -84,6 +84,7 @@ def test_paddleocr_plugin_reads_subprocess_payload(monkeypatch, tmp_path):
     runner_path.write_text("", encoding="utf-8")
 
     def fake_run(command, check, capture_output, text, timeout):
+        fake_run.command = command
         output_path = command[command.index("--output") + 1]
         from subprocess import CompletedProcess
 
@@ -108,7 +109,13 @@ def test_paddleocr_plugin_reads_subprocess_payload(monkeypatch, tmp_path):
 
     result = PaddleOcrPlugin().recognize(
         str(image_path),
-        {"python": str(python_path), "runner": str(runner_path), "timeout_seconds": 5},
+        {
+            "python": str(python_path),
+            "runner": str(runner_path),
+            "timeout_seconds": 5,
+            "min_text_length": 5,
+            "min_line_count": 2,
+        },
     )
 
     assert result.status == "success"
@@ -116,6 +123,115 @@ def test_paddleocr_plugin_reads_subprocess_payload(monkeypatch, tmp_path):
     assert result.structured_data["raw_text"] == "原始文本"
     assert result.structured_data["markdown"] == result.text
     assert result.structured_data["corrections"][0]["target"] == "数码互联"
+
+
+def test_paddleocr_prefers_table_structure_markdown(monkeypatch, tmp_path):
+    """启用表格结构识别时应优先使用结构化表格结果。"""
+    from engine.ocr_plugins.paddleocr import PaddleOcrPlugin
+
+    image_path = tmp_path / "table.png"
+    image_path.write_bytes(b"fake-image")
+    python_path = tmp_path / "python"
+    runner_path = tmp_path / "runner.py"
+    python_path.write_text("", encoding="utf-8")
+    runner_path.write_text("", encoding="utf-8")
+
+    def fake_run(command, check, capture_output, text, timeout):
+        fake_run.command = command
+        output_path = command[command.index("--output") + 1]
+        from subprocess import CompletedProcess
+
+        Path(output_path).write_text(
+            json.dumps(
+                    {
+                        "wall_seconds": 1.23,
+                        "text": "普通文本",
+                        "table_markdown": "| 普通 |",
+                        "table_structure_html": "<table><tr><td>序号</td><td>案例名称</td></tr><tr><td>1</td><td>测试</td></tr></table>",
+                        "table_structure_markdown": "| 序号 | 案例名称 |\n| --- | --- |\n| 1 | 测试 |",
+                        "table_structure": {"pipeline": "PPStructureV3", "row_count": 2, "raw_results": [{"res": {}}]},
+                        "lines": [{"text": "普通文本"}],
+                        "image": {"width": 1000, "height": 800},
+                        "config": {"table_recognition": True},
+                    },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        return CompletedProcess(command, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr("engine.ocr_plugins.paddleocr.subprocess.run", fake_run)
+
+    result = PaddleOcrPlugin().recognize(
+        str(image_path),
+        {
+            "python": str(python_path),
+            "runner": str(runner_path),
+            "timeout_seconds": 5,
+            "table_recognition": True,
+            "table_recognition_pipeline": "PPStructureV3",
+        },
+    )
+
+    assert result.text.startswith("| 序号 | 案例名称 |")
+    assert "--table-recognition" in fake_run.command
+    assert fake_run.command[fake_run.command.index("--table-recognition-pipeline") + 1] == "PPStructureV3"
+    assert result.structured_data["markdown"] == "| 普通 |"
+    assert result.structured_data["table_structure_markdown"].startswith("| 序号 |")
+    assert result.structured_data["table_structure_html"].startswith("<table>")
+    assert result.structured_data["table_structure"]["pipeline"] == "PPStructureV3"
+    assert result.status == "success"
+    assert result.quality_status == "usable"
+
+
+def test_paddleocr_quality_falls_back_to_lines_when_table_structure_empty(monkeypatch, tmp_path):
+    """表格结构识别为空时质量评估应回退普通 OCR 行数。"""
+    from engine.ocr_plugins.paddleocr import PaddleOcrPlugin
+
+    image_path = tmp_path / "table.png"
+    image_path.write_bytes(b"fake-image")
+    python_path = tmp_path / "python"
+    runner_path = tmp_path / "runner.py"
+    python_path.write_text("", encoding="utf-8")
+    runner_path.write_text("", encoding="utf-8")
+
+    def fake_run(command, check, capture_output, text, timeout):
+        output_path = command[command.index("--output") + 1]
+        from subprocess import CompletedProcess
+
+        Path(output_path).write_text(
+            json.dumps(
+                {
+                    "wall_seconds": 1.23,
+                    "text": "普通文本内容足够长用于验证质量评估回退",
+                    "table_markdown": "",
+                    "table_structure_html": "",
+                    "table_structure": {"pipeline": "PPStructureV3", "row_count": 0, "raw_results": []},
+                    "lines": [{"text": "第一行"}, {"text": "第二行"}],
+                    "image": {"width": 1000, "height": 800},
+                    "config": {"table_recognition": True},
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        return CompletedProcess(command, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr("engine.ocr_plugins.paddleocr.subprocess.run", fake_run)
+
+    result = PaddleOcrPlugin().recognize(
+        str(image_path),
+        {
+            "python": str(python_path),
+            "runner": str(runner_path),
+            "timeout_seconds": 5,
+            "min_text_length": 5,
+            "min_line_count": 2,
+        },
+    )
+
+    assert result.status == "success"
+    assert result.quality_status == "usable"
 
 
 def test_paddleocr_short_text_requires_manual_review(monkeypatch, tmp_path):

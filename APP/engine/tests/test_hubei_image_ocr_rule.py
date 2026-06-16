@@ -12,3 +12,5 @@ def test_nda_rule_enables_paddleocr_image_ocr():
 
     assert rule["archive"]["image_ocr"]["enabled"] is True
     assert rule["archive"]["image_ocr"]["ocr"]["plugin"] == "paddleocr"
+    assert rule["archive"]["image_ocr"]["ocr"]["table_recognition"] is True
+    assert rule["archive"]["image_ocr"]["ocr"]["table_recognition_pipeline"] == "PPStructureV3"
