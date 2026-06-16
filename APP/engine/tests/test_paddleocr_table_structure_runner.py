@@ -59,6 +59,18 @@ def test_extract_table_markdown_prefers_later_markdown_before_earlier_html():
     assert _extract_table_markdown([html_payload, markdown_payload]) == "| 序号 |"
 
 
+def test_extract_table_markdown_reads_paddlex_table_res_list_pred_html():
+    payload = {
+        "res": {
+            "table_res_list": [
+                {"pred_html": "<html><body><table><tr><td>序号</td></tr></table></body></html>"}
+            ]
+        }
+    }
+
+    assert _extract_table_markdown([payload]).startswith("<html>")
+
+
 def test_main_writes_outputs_and_creates_parent_directory(monkeypatch, tmp_path):
     captured = {}
 

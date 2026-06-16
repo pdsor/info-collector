@@ -74,13 +74,19 @@ def _extract_table_markdown(payloads: list[dict[str, Any]]) -> str:
         payload.get("res") if isinstance(payload.get("res"), dict) else payload
         for payload in payloads
     ]
+    table_payloads = []
     for res in normalized_payloads:
+        table_payloads.append(res)
+        table_res_list = res.get("table_res_list")
+        if isinstance(table_res_list, list):
+            table_payloads.extend(item for item in table_res_list if isinstance(item, dict))
+    for res in table_payloads:
         for key in ("markdown", "table_markdown", "md"):
             value = res.get(key)
             if isinstance(value, str) and value.strip():
                 return value
-    for res in normalized_payloads:
-        for key in ("html", "table_html"):
+    for res in table_payloads:
+        for key in ("html", "table_html", "pred_html"):
             value = res.get(key)
             if isinstance(value, str) and value.strip():
                 return value
