@@ -81,6 +81,8 @@ archive:
       text_detection_model_name: "PP-OCRv5_mobile_det"
       text_recognition_model_name: "PP-OCRv5_mobile_rec"
       text_det_limit_side_len: 960
+      table_recognition: true
+      table_recognition_pipeline: "PPStructureV3"
       home: "/tmp/paddleocr-home"
       timeout_seconds: 7200
     fallback:
